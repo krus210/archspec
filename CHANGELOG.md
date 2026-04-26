@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-26
+
+### Added
+- `/archspec:init` Bootstrap questionnaire now explicitly asks the user for `service.responsibilities` and `service.invariants` before the auto-discovery pass. Previously these were left as `TODO` placeholders, making the generated `ARCHITECTURE.md` essentially empty.
+- Auto-detection of gRPC `contract` paths: when the scanner sees `pb.RegisterXxxServer`, it searches up to 5 parent directories for a matching `proto/<domain>/v1/*.proto` file and returns it as `contract_hint` in the discovery report. The questionnaire proposes that path as the default `endpoints[].contract` value instead of `"TODO"`.
+- Read-only-service heuristic for `consistency.write_path.pattern`: if the user accepts zero published events and zero mutating endpoints (anything not prefixed with `Get`, `List`, `Find`, `Read`, `Search`, `Has`, `Is`, `Count`, `Lookup`, `Query`, `Fetch`), default to `direct` instead of `outbox`.
+
+### Changed
+- Sequence diagram now distinguishes reads from writes: endpoints whose name begins with one of the read-prefix verbs above render `svc->>storage: read`; everything else renders `write`. Previously every endpoint was labelled `write`, which was wrong for read-only services like a geo lookup.
+- `sequence.mmd` header dropped the misleading "(write path)" suffix.
+
+### Fixed
+- `DET-005` (manual edit of generated diagram) no longer triggers on `tests/golden/` or `examples/` paths — those are archspec-maintained golden references, not user-facing artefacts.
+
 ## [0.2.0] - 2026-04-26
 
 ### Added
