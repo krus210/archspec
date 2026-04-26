@@ -4,8 +4,12 @@
   "plugins": [
     {
       "name": "archspec",
-      "source": ".",
-      "description": "Spec-driven architecture validation for microservices"
+      "source": {
+        "source": "github",
+        "repo": "krus210/archspec"
+      },
+      "description": "Spec-driven architecture validation for microservices",
+      "version": "0.1.2"
     }
   ]
 }
