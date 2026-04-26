@@ -38,3 +38,21 @@ def test_scan_nonexistent_directory_exits_2():
     )
     assert r.returncode == 2
     assert "not a directory" in r.stderr.lower()
+
+
+def test_scan_http_routes_finds_all_routers():
+    report = _run(FIXTURES / "http_routes")
+    paths = sorted({(e["method"], e["path"]) for e in report["endpoints"] if e["protocol"] == "HTTP"})
+    assert paths == [
+        ("ANY", "/api/v1/tasks"),
+        ("ANY", "/api/v1/tasks/"),
+        ("DELETE", "/files/:name"),
+        ("GET", "/healthz"),
+        ("GET", "/users/{id}"),
+        ("POST", "/users"),
+        ("PUT", "/items/:id"),
+    ]
+    for ep in report["endpoints"]:
+        assert ep["protocol"] == "HTTP"
+        assert ep["source"].startswith("main.go:")
+        assert ep["confidence"] in {"high", "medium", "low"}

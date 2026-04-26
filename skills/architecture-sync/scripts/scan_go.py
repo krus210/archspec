@@ -18,10 +18,54 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 EXCLUDE_DIRS = {"vendor", "gen", ".git", "node_modules", "testdata"}
+
+_HTTP_VERB_METHODS = ("Get", "Post", "Put", "Patch", "Delete", "Head", "Options")
+
+_HTTP_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("ANY", re.compile(r'\b(?:[A-Za-z_]\w*\.)?HandleFunc\s*\(\s*"([^"]+)"')),
+    *[
+        (verb.upper(), re.compile(rf'\b[A-Za-z_]\w*\.{verb}\s*\(\s*"([^"]+)"'))
+        for verb in _HTTP_VERB_METHODS
+    ],
+    *[
+        (verb, re.compile(rf'\b[A-Za-z_]\w*\.{verb}\s*\(\s*"([^"]+)"'))
+        for verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+    ],
+]
+
+
+def _line_of(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def _scan_http_endpoints(file: Path, root: Path) -> list[dict]:
+    text = file.read_text(encoding="utf-8", errors="replace")
+    rel = file.relative_to(root)
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for method, pat in _HTTP_PATTERNS:
+        for m in pat.finditer(text):
+            path = m.group(1)
+            key = (method, path)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "kind": "endpoint",
+                    "protocol": "HTTP",
+                    "method": method,
+                    "path": path,
+                    "source": f"{rel}:{_line_of(text, m.start())}",
+                    "confidence": "medium",
+                }
+            )
+    return out
 
 
 def _iter_go_files(root: Path) -> list[Path]:
@@ -38,10 +82,14 @@ def _iter_go_files(root: Path) -> list[Path]:
 def scan(service_dir: Path) -> dict:
     """Return the discovery report as a Python dict."""
     files = _iter_go_files(service_dir)
+    endpoints: list[dict] = []
+    for f in files:
+        endpoints.extend(_scan_http_endpoints(f, service_dir))
+    endpoints.sort(key=lambda e: (e["protocol"], e["method"], e.get("path", ""), e["source"]))
     return {
         "service_dir": str(service_dir),
         "files_scanned": len(files),
-        "endpoints": [],
+        "endpoints": endpoints,
         "downstream_sync": [],
         "storage": [],
         "events_published": [],
