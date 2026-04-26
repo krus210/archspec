@@ -47,6 +47,41 @@ _GRPC_REGISTER_PATTERN = re.compile(
     r'\b(?:[A-Za-z_]\w*\.)?Register([A-Z][A-Za-z0-9_]*Server)\s*\('
 )
 
+# How many parent directories of the service to walk up looking for proto/.
+_PROTO_LOOKUP_DEPTH = 5
+
+
+def _domain_from_grpc_server(name: str) -> str:
+    """`GeoServiceServer` → `geo`, `TaskServer` → `task`, `ABCServer` → `abc`."""
+    n = name[: -len("Server")] if name.endswith("Server") else name
+    if n.endswith("Service"):
+        n = n[: -len("Service")]
+    parts = re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+|[A-Z]+(?=[A-Z]|$)", n)
+    return "-".join(p.lower() for p in parts) or n.lower()
+
+
+def _find_proto_contract(service_dir: Path, domain: str) -> str | None:
+    """Walk up from service_dir looking for proto/<domain>/v1/*.proto.
+
+    Returns the path relative to service_dir (so it stays portable across
+    machines) or None if no candidate is found.
+    """
+    cursor = service_dir.resolve()
+    for _ in range(_PROTO_LOOKUP_DEPTH):
+        candidate_dir = cursor / "proto" / domain / "v1"
+        if candidate_dir.is_dir():
+            protos = sorted(candidate_dir.glob("*.proto"))
+            if protos:
+                try:
+                    return str(protos[0].relative_to(service_dir.resolve()))
+                except ValueError:
+                    # Service is under a different subtree; emit absolute repo-rooted path.
+                    return str(protos[0])
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    return None
+
 _GRPC_CLIENT_PATTERN = re.compile(
     r'\bgrpc\.(?:NewClient|Dial)\s*\(\s*([A-Za-z_]\w*|"[^"]+")'
 )
@@ -316,17 +351,19 @@ def _scan_grpc_endpoints(file: Path, root: Path) -> list[dict]:
         if name in seen:
             continue
         seen.add(name)
-        out.append(
-            {
-                "kind": "endpoint",
-                "protocol": "gRPC",
-                "method": "RPC",
-                "name": name,
-                "path": name,
-                "source": f"{rel}:{_line_of(text, m.start())}",
-                "confidence": "high",
-            }
-        )
+        finding: dict = {
+            "kind": "endpoint",
+            "protocol": "gRPC",
+            "method": "RPC",
+            "name": name,
+            "path": name,
+            "source": f"{rel}:{_line_of(text, m.start())}",
+            "confidence": "high",
+        }
+        contract = _find_proto_contract(root, _domain_from_grpc_server(name))
+        if contract:
+            finding["contract_hint"] = contract
+        out.append(finding)
     return out
 
 

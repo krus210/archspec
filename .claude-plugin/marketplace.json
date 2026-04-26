@@ -9,7 +9,7 @@
         "repo": "krus210/archspec"
       },
       "description": "Spec-driven architecture validation for microservices",
-      "version": "0.2.0"
+      "version": "0.3.0"
     }
   ]
 }

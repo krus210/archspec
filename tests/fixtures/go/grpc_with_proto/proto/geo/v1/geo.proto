@@ -1,0 +1,3 @@
+syntax = "proto3";
+package geo.v1;
+service GeoService {}

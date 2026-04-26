@@ -1,6 +1,6 @@
 {
   "name": "archspec",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Spec-driven architecture validation for microservices",
   "repository": "https://github.com/krus210/archspec",
   "license": "MIT"
