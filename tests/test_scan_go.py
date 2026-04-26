@@ -40,6 +40,37 @@ def test_scan_nonexistent_directory_exits_2():
     assert "not a directory" in r.stderr.lower()
 
 
+def test_scan_kafka_finds_published_and_consumed_topics():
+    report = _run(FIXTURES / "kafka")
+    pub = sorted(t["topic"] for t in report["events_published"])
+    con = sorted(t["topic"] for t in report["events_consumed"])
+    assert pub == ["geo.points.v1", "tasks.created.v1"]
+    assert con == ["profiles.updated.v1", "tasks.assigned.v1"]
+    for ev in report["events_published"] + report["events_consumed"]:
+        assert ev["source"].startswith("main.go:")
+        assert ev["confidence"] in {"medium", "low"}
+        assert ev["backend"] == "kafka"
+
+
+def test_scan_nats_finds_subjects_and_resolves_constants():
+    report = _run(FIXTURES / "nats")
+    pub = sorted(t["topic"] for t in report["events_published"])
+    con = sorted(t["topic"] for t in report["events_consumed"])
+    assert pub == ["billing.invoice.v1", "geo.points.v1", "task.created"]
+    assert con == ["match.found", "notifications.push"]
+    for ev in report["events_published"] + report["events_consumed"]:
+        assert ev["backend"] == "nats"
+        assert ev["source"].startswith("main.go:")
+    assert "x" not in pub
+
+
+def test_scan_unknown_messaging_library_produces_zero_events_no_crash():
+    report = _run(FIXTURES / "unknown_messaging")
+    assert report["events_published"] == []
+    assert report["events_consumed"] == []
+    assert report["files_scanned"] == 1
+
+
 def test_scan_storage_finds_clients():
     report = _run(FIXTURES / "storage")
     types = sorted({s["type"] for s in report["storage"]})

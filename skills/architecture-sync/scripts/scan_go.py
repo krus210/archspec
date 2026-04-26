@@ -110,6 +110,127 @@ def _service_name_from_literal(literal: str) -> str:
     return head or "unknown"
 
 
+_TOPIC_FIELD = re.compile(r'\bTopic\s*:\s*"([^"]+)"')
+# `Topics: []string{...}` (struct field), `topics := []string{...}`, `topics = ...`.
+_SARAMA_TOPICS_LITERAL = re.compile(
+    r'\b(?:Topics|topics)\s*[:=]+\s*\[\]string\s*\{\s*("[^"]+"(?:\s*,\s*"[^"]+")*)\s*\}'
+)
+# Block bodies allow one level of nested `{...}` (e.g. `Brokers: []string{...}`).
+_NESTED_BRACE_BODY = r"(?:[^{}]|\{[^{}]*\})*"
+_KAFKA_WRITER_BLOCK = re.compile(
+    rf"kafka\.NewWriter\s*\(\s*kafka\.WriterConfig\s*\{{(?P<body>{_NESTED_BRACE_BODY})\}}",
+    re.DOTALL,
+)
+_KAFKA_READER_BLOCK = re.compile(
+    rf"kafka\.NewReader\s*\(\s*kafka\.ReaderConfig\s*\{{(?P<body>{_NESTED_BRACE_BODY})\}}",
+    re.DOTALL,
+)
+_SARAMA_PRODUCER_MSG = re.compile(
+    rf"sarama\.ProducerMessage\s*\{{(?P<body>{_NESTED_BRACE_BODY})\}}",
+    re.DOTALL,
+)
+_NATS_PUBLISH = re.compile(
+    r'\b[A-Za-z_]\w*\.Publish\s*\(\s*((?:[A-Za-z_]\w*)|"[^"]+")'
+)
+_NATS_SUBSCRIBE = re.compile(
+    r'\b[A-Za-z_]\w*\.Subscribe\s*\(\s*((?:[A-Za-z_]\w*)|"[^"]+")'
+)
+_NATS_QUEUE_SUBSCRIBE = re.compile(
+    r'\b[A-Za-z_]\w*\.QueueSubscribe\s*\(\s*((?:[A-Za-z_]\w*)|"[^"]+")'
+)
+# JetStream `js.Publish(ctx, subject, ...)` — first arg may contain balanced `(...)`.
+_JETSTREAM_PUBLISH = re.compile(
+    r'\b[A-Za-z_]\w*\.Publish(?:Async)?\s*\((?:\([^()]*\)|[^,()])*,\s*((?:[A-Za-z_]\w*)|"[^"]+")'
+)
+
+
+def _resolve_subject(arg: str, const_table: dict[str, str]) -> str | None:
+    if arg.startswith('"') and arg.endswith('"'):
+        return arg[1:-1]
+    return const_table.get(arg)
+
+
+def _scan_kafka(text: str, rel: Path) -> tuple[list[dict], list[dict]]:
+    pub: list[dict] = []
+    con: list[dict] = []
+    for m in _KAFKA_WRITER_BLOCK.finditer(text):
+        line = _line_of(text, m.start())
+        for topic in _TOPIC_FIELD.findall(m.group("body")):
+            pub.append({"kind": "event", "backend": "kafka", "topic": topic,
+                        "source": f"{rel}:{line}", "confidence": "medium"})
+    for m in _SARAMA_PRODUCER_MSG.finditer(text):
+        line = _line_of(text, m.start())
+        for topic in _TOPIC_FIELD.findall(m.group("body")):
+            pub.append({"kind": "event", "backend": "kafka", "topic": topic,
+                        "source": f"{rel}:{line}", "confidence": "medium"})
+    for m in _KAFKA_READER_BLOCK.finditer(text):
+        line = _line_of(text, m.start())
+        for topic in _TOPIC_FIELD.findall(m.group("body")):
+            con.append({"kind": "event", "backend": "kafka", "topic": topic,
+                        "source": f"{rel}:{line}", "confidence": "medium"})
+    if "sarama.NewConsumerGroup" in text:
+        for m in _SARAMA_TOPICS_LITERAL.finditer(text):
+            line = _line_of(text, m.start())
+            for topic in re.findall(r'"([^"]+)"', m.group(1)):
+                con.append({"kind": "event", "backend": "kafka", "topic": topic,
+                            "source": f"{rel}:{line}", "confidence": "low"})
+    return pub, con
+
+
+def _scan_nats(text: str, rel: Path, const_table: dict[str, str]) -> tuple[list[dict], list[dict]]:
+    if "nats-io/nats.go" not in text and "nats.Connect" not in text and "jetstream." not in text:
+        return [], []
+    pub: list[dict] = []
+    con: list[dict] = []
+
+    def _emit(target: list[dict], pat: re.Pattern[str], confidence: str) -> None:
+        for m in pat.finditer(text):
+            subject = _resolve_subject(m.group(1), const_table)
+            if subject is None:
+                continue
+            target.append({"kind": "event", "backend": "nats", "topic": subject,
+                           "source": f"{rel}:{_line_of(text, m.start())}",
+                           "confidence": confidence})
+
+    _emit(pub, _NATS_PUBLISH, "medium")
+    _emit(pub, _JETSTREAM_PUBLISH, "medium")
+    _emit(con, _NATS_SUBSCRIBE, "medium")
+    _emit(con, _NATS_QUEUE_SUBSCRIBE, "medium")
+    return pub, con
+
+
+_MESSAGING_BACKENDS = ("kafka", "nats")
+
+
+def _scan_events(file: Path, root: Path) -> tuple[list[dict], list[dict]]:
+    text = file.read_text(encoding="utf-8", errors="replace")
+    rel = file.relative_to(root)
+    const_table = _build_string_const_table(text)
+    pub: list[dict] = []
+    con: list[dict] = []
+    if "kafka" in _MESSAGING_BACKENDS:
+        kp, kc = _scan_kafka(text, rel)
+        pub.extend(kp)
+        con.extend(kc)
+    if "nats" in _MESSAGING_BACKENDS:
+        np, nc = _scan_nats(text, rel, const_table)
+        pub.extend(np)
+        con.extend(nc)
+    seen: set[tuple[str, str, str]] = set()
+    pub = [
+        e for e in pub
+        if (e["backend"], e["topic"], e["source"]) not in seen
+        and not seen.add((e["backend"], e["topic"], e["source"]))
+    ]
+    seen.clear()
+    con = [
+        e for e in con
+        if (e["backend"], e["topic"], e["source"]) not in seen
+        and not seen.add((e["backend"], e["topic"], e["source"]))
+    ]
+    return pub, con
+
+
 _STORAGE_PATTERNS: list[tuple[str, str, re.Pattern[str]]] = [
     ("postgres", "high", re.compile(r"\bpgx\.Connect\s*\(")),
     ("postgres", "high", re.compile(r"\bpgxpool\.(?:New|NewWithConfig|Connect)\s*\(")),
@@ -247,22 +368,29 @@ def scan(service_dir: Path) -> dict:
     endpoints: list[dict] = []
     downstream: list[dict] = []
     storage: list[dict] = []
+    pub: list[dict] = []
+    con: list[dict] = []
     for f in files:
         endpoints.extend(_scan_http_endpoints(f, service_dir))
         endpoints.extend(_scan_grpc_endpoints(f, service_dir))
         downstream.extend(_scan_downstream_sync(f, service_dir))
         storage.extend(_scan_storage(f, service_dir))
+        p, c = _scan_events(f, service_dir)
+        pub.extend(p)
+        con.extend(c)
     endpoints.sort(key=lambda e: (e["protocol"], e["method"], e.get("path", ""), e["source"]))
     downstream.sort(key=lambda d: (d["service"], d["source"]))
     storage.sort(key=lambda s: (s["type"], s["source"]))
+    pub.sort(key=lambda e: (e["backend"], e["topic"], e["source"]))
+    con.sort(key=lambda e: (e["backend"], e["topic"], e["source"]))
     return {
         "service_dir": str(service_dir),
         "files_scanned": len(files),
         "endpoints": endpoints,
         "downstream_sync": downstream,
         "storage": storage,
-        "events_published": [],
-        "events_consumed": [],
+        "events_published": pub,
+        "events_consumed": con,
     }
 
 
