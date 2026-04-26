@@ -47,6 +47,106 @@ _GRPC_REGISTER_PATTERN = re.compile(
     r'\b(?:[A-Za-z_]\w*\.)?Register([A-Z][A-Za-z0-9_]*Server)\s*\('
 )
 
+_GRPC_CLIENT_PATTERN = re.compile(
+    r'\bgrpc\.(?:NewClient|Dial)\s*\(\s*([A-Za-z_]\w*|"[^"]+")'
+)
+_CONST_OR_VAR_ASSIGN = re.compile(
+    r'\b([A-Za-z_]\w*)\s*(?::?=|=)\s*"([^"]+)"'
+)
+_IDENT_ALIAS = re.compile(r'\b([A-Za-z_]\w*)\s*(?::=|=)\s*([A-Za-z_]\w*)\s*(?:$|\n|//)')
+
+
+def _build_string_const_table(text: str) -> dict[str, str]:
+    """Map identifier → string literal it is assigned to.
+
+    Two passes so identifier aliases resolve: first capture all literal
+    assignments, then resolve `x := otherIdent` chains up to depth 4.
+    """
+    literals: dict[str, str] = {}
+    for m in _CONST_OR_VAR_ASSIGN.finditer(text):
+        literals[m.group(1)] = m.group(2)
+    aliases: dict[str, str] = {}
+    for m in _IDENT_ALIAS.finditer(text):
+        if m.group(1) not in literals:
+            aliases[m.group(1)] = m.group(2)
+    for _ in range(4):
+        for k, v in list(aliases.items()):
+            if v in literals:
+                literals[k] = literals[v]
+                del aliases[k]
+    return literals
+
+
+def _build_alias_to_root(text: str) -> dict[str, str]:
+    """Map alias identifier → its root identifier (for `x := y` chains).
+
+    Used to derive a meaningful service name from the root constant when the
+    grpc.NewClient call passes an alias variable.
+    """
+    aliases: dict[str, str] = {}
+    for m in _IDENT_ALIAS.finditer(text):
+        aliases[m.group(1)] = m.group(2)
+    for _ in range(4):
+        for k, v in list(aliases.items()):
+            if v in aliases:
+                aliases[k] = aliases[v]
+    return aliases
+
+
+def _service_name_from_const(ident: str) -> str:
+    s = ident
+    if s.startswith("default"):
+        s = s[len("default") :]
+    for suf in ("Address", "Addr"):
+        if s.endswith(suf):
+            s = s[: -len(suf)]
+            break
+    parts = re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+", s)
+    return "-".join(p.lower() for p in parts) or ident.lower()
+
+
+def _service_name_from_literal(literal: str) -> str:
+    head = literal.split(":", 1)[0].strip()
+    return head or "unknown"
+
+
+def _scan_downstream_sync(file: Path, root: Path) -> list[dict]:
+    text = file.read_text(encoding="utf-8", errors="replace")
+    rel = file.relative_to(root)
+    consts = _build_string_const_table(text)
+    aliases = _build_alias_to_root(text)
+    seen: set[str] = set()
+    out: list[dict] = []
+    for m in _GRPC_CLIENT_PATTERN.finditer(text):
+        arg = m.group(1)
+        if arg.startswith('"'):
+            literal = arg[1:-1]
+            name = _service_name_from_literal(literal)
+            confidence = "medium"
+        else:
+            literal = consts.get(arg)
+            if literal is not None:
+                root_ident = aliases.get(arg, arg)
+                name = _service_name_from_const(root_ident)
+                confidence = "high"
+            else:
+                name = arg.lower()
+                confidence = "low"
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append(
+            {
+                "kind": "downstream_sync",
+                "protocol": "gRPC",
+                "service": name,
+                "address_arg": arg,
+                "source": f"{rel}:{_line_of(text, m.start())}",
+                "confidence": confidence,
+            }
+        )
+    return out
+
 
 def _scan_grpc_endpoints(file: Path, root: Path) -> list[dict]:
     text = file.read_text(encoding="utf-8", errors="replace")
@@ -112,15 +212,18 @@ def scan(service_dir: Path) -> dict:
     """Return the discovery report as a Python dict."""
     files = _iter_go_files(service_dir)
     endpoints: list[dict] = []
+    downstream: list[dict] = []
     for f in files:
         endpoints.extend(_scan_http_endpoints(f, service_dir))
         endpoints.extend(_scan_grpc_endpoints(f, service_dir))
+        downstream.extend(_scan_downstream_sync(f, service_dir))
     endpoints.sort(key=lambda e: (e["protocol"], e["method"], e.get("path", ""), e["source"]))
+    downstream.sort(key=lambda d: (d["service"], d["source"]))
     return {
         "service_dir": str(service_dir),
         "files_scanned": len(files),
         "endpoints": endpoints,
-        "downstream_sync": [],
+        "downstream_sync": downstream,
         "storage": [],
         "events_published": [],
         "events_consumed": [],

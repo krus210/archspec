@@ -40,6 +40,16 @@ def test_scan_nonexistent_directory_exits_2():
     assert "not a directory" in r.stderr.lower()
 
 
+def test_scan_grpc_client_extracts_downstream_targets():
+    report = _run(FIXTURES / "grpc_client")
+    targets = sorted(d["service"] for d in report["downstream_sync"])
+    assert targets == ["geo-service", "matching-service", "task-service"]
+    for d in report["downstream_sync"]:
+        assert d["protocol"] == "gRPC"
+        assert d["source"].startswith("main.go:")
+        assert d["confidence"] in {"high", "medium", "low"}
+
+
 def test_scan_grpc_server_finds_registered_services():
     report = _run(FIXTURES / "grpc_server")
     grpc = sorted(
