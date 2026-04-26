@@ -110,6 +110,39 @@ def _service_name_from_literal(literal: str) -> str:
     return head or "unknown"
 
 
+_STORAGE_PATTERNS: list[tuple[str, str, re.Pattern[str]]] = [
+    ("postgres", "high", re.compile(r"\bpgx\.Connect\s*\(")),
+    ("postgres", "high", re.compile(r"\bpgxpool\.(?:New|NewWithConfig|Connect)\s*\(")),
+    ("redis", "high", re.compile(r"\bredis\.New(?:Failover)?Client\s*\(")),
+    ("mongodb", "high", re.compile(r"\bmongo\.Connect\s*\(")),
+    ("sql", "medium", re.compile(r"\bsql(?:x)?\.Open\s*\(")),
+    ("in-memory", "low", re.compile(r"\b[A-Za-z_]\w*\.New[A-Z][A-Za-z0-9_]*MemoryRepo\s*\(|\bNewMemoryRepo\s*\(")),
+]
+
+
+def _scan_storage(file: Path, root: Path) -> list[dict]:
+    text = file.read_text(encoding="utf-8", errors="replace")
+    rel = file.relative_to(root)
+    seen: set[tuple[str, int]] = set()
+    out: list[dict] = []
+    for storage_type, confidence, pat in _STORAGE_PATTERNS:
+        for m in pat.finditer(text):
+            line = _line_of(text, m.start())
+            key = (storage_type, line)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "kind": "storage",
+                    "type": storage_type,
+                    "source": f"{rel}:{line}",
+                    "confidence": confidence,
+                }
+            )
+    return out
+
+
 def _scan_downstream_sync(file: Path, root: Path) -> list[dict]:
     text = file.read_text(encoding="utf-8", errors="replace")
     rel = file.relative_to(root)
@@ -213,18 +246,21 @@ def scan(service_dir: Path) -> dict:
     files = _iter_go_files(service_dir)
     endpoints: list[dict] = []
     downstream: list[dict] = []
+    storage: list[dict] = []
     for f in files:
         endpoints.extend(_scan_http_endpoints(f, service_dir))
         endpoints.extend(_scan_grpc_endpoints(f, service_dir))
         downstream.extend(_scan_downstream_sync(f, service_dir))
+        storage.extend(_scan_storage(f, service_dir))
     endpoints.sort(key=lambda e: (e["protocol"], e["method"], e.get("path", ""), e["source"]))
     downstream.sort(key=lambda d: (d["service"], d["source"]))
+    storage.sort(key=lambda s: (s["type"], s["source"]))
     return {
         "service_dir": str(service_dir),
         "files_scanned": len(files),
         "endpoints": endpoints,
         "downstream_sync": downstream,
-        "storage": [],
+        "storage": storage,
         "events_published": [],
         "events_consumed": [],
     }

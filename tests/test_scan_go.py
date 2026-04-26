@@ -40,6 +40,17 @@ def test_scan_nonexistent_directory_exits_2():
     assert "not a directory" in r.stderr.lower()
 
 
+def test_scan_storage_finds_clients():
+    report = _run(FIXTURES / "storage")
+    types = sorted({s["type"] for s in report["storage"]})
+    assert types == ["in-memory", "mongodb", "postgres", "redis", "sql"]
+    by_type = {s["type"]: s for s in report["storage"]}
+    assert by_type["in-memory"]["confidence"] == "low"
+    assert by_type["postgres"]["confidence"] == "high"
+    for s in report["storage"]:
+        assert s["source"].startswith("main.go:")
+
+
 def test_scan_grpc_client_extracts_downstream_targets():
     report = _run(FIXTURES / "grpc_client")
     targets = sorted(d["service"] for d in report["downstream_sync"])
