@@ -43,6 +43,35 @@ def _line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+_GRPC_REGISTER_PATTERN = re.compile(
+    r'\b(?:[A-Za-z_]\w*\.)?Register([A-Z][A-Za-z0-9_]*Server)\s*\('
+)
+
+
+def _scan_grpc_endpoints(file: Path, root: Path) -> list[dict]:
+    text = file.read_text(encoding="utf-8", errors="replace")
+    rel = file.relative_to(root)
+    seen: set[str] = set()
+    out: list[dict] = []
+    for m in _GRPC_REGISTER_PATTERN.finditer(text):
+        name = m.group(1)
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append(
+            {
+                "kind": "endpoint",
+                "protocol": "gRPC",
+                "method": "RPC",
+                "name": name,
+                "path": name,
+                "source": f"{rel}:{_line_of(text, m.start())}",
+                "confidence": "high",
+            }
+        )
+    return out
+
+
 def _scan_http_endpoints(file: Path, root: Path) -> list[dict]:
     text = file.read_text(encoding="utf-8", errors="replace")
     rel = file.relative_to(root)
@@ -85,6 +114,7 @@ def scan(service_dir: Path) -> dict:
     endpoints: list[dict] = []
     for f in files:
         endpoints.extend(_scan_http_endpoints(f, service_dir))
+        endpoints.extend(_scan_grpc_endpoints(f, service_dir))
     endpoints.sort(key=lambda e: (e["protocol"], e["method"], e.get("path", ""), e["source"]))
     return {
         "service_dir": str(service_dir),

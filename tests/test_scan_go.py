@@ -40,6 +40,18 @@ def test_scan_nonexistent_directory_exits_2():
     assert "not a directory" in r.stderr.lower()
 
 
+def test_scan_grpc_server_finds_registered_services():
+    report = _run(FIXTURES / "grpc_server")
+    grpc = sorted(
+        e["name"] for e in report["endpoints"] if e["protocol"] == "gRPC"
+    )
+    assert grpc == ["GeoServiceServer", "TaskServiceServer"]
+    for ep in report["endpoints"]:
+        if ep["protocol"] == "gRPC":
+            assert ep["source"].startswith("main.go:")
+            assert ep["confidence"] == "high"
+
+
 def test_scan_http_routes_finds_all_routers():
     report = _run(FIXTURES / "http_routes")
     paths = sorted({(e["method"], e["path"]) for e in report["endpoints"] if e["protocol"] == "HTTP"})
