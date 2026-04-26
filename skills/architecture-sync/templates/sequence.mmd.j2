@@ -1,4 +1,4 @@
-%% archspec sequence diagram (write path) for {{ service.name }}
+%% archspec sequence diagram for {{ service.name }}
 sequenceDiagram
   autonumber
   participant client as Client
@@ -19,7 +19,7 @@ sequenceDiagram
   {{ d.slug }}-->>svc: response
   {% endfor %}
   {% for s in storage | sort(attribute="name") %}
-  svc->>{{ s.slug }}: write
+  svc->>{{ s.slug }}: {% if ep.is_read %}read{% else %}write{% endif %}
   {% endfor %}
   svc-->>client: response
 {% endfor %}

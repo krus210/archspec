@@ -14,10 +14,19 @@ from pathlib import Path
 
 from _common import JINJA_ENV, read_yaml, slugify, write_text_atomic
 
+READ_PREFIXES = (
+    "Get", "List", "Find", "Read", "Search", "Has", "Is", "Count", "Lookup", "Query", "Fetch",
+)
+
+
+def _is_read_endpoint(name: str) -> bool:
+    return any(name.startswith(p) for p in READ_PREFIXES)
+
 
 def _enrich(doc: dict) -> dict:
     deps = doc.get("dependencies", {})
     events = doc.get("events", {})
+    raw_endpoints = doc.get("api", {}).get("endpoints", [])
     return {
         "service": doc["service"],
         "upstream": [{"name": u, "slug": slugify(u)} for u in deps.get("upstream", [])],
@@ -30,7 +39,7 @@ def _enrich(doc: dict) -> dict:
         "storage": [{**s, "slug": slugify(s["name"])} for s in deps.get("storage", [])],
         "published": [{**t, "slug": slugify(t["topic"])} for t in events.get("published", [])],
         "consumed": [{**t, "slug": slugify(t["topic"])} for t in events.get("consumed", [])],
-        "endpoints": doc.get("api", {}).get("endpoints", []),
+        "endpoints": [{**e, "is_read": _is_read_endpoint(e["name"])} for e in raw_endpoints],
     }
 
 

@@ -21,7 +21,13 @@ def _staged_yaml(staged: list[str]) -> str | None:
 
 
 def _staged_diagrams(staged: list[str]) -> list[str]:
-    return [s for s in staged if s.endswith(".mmd") and Path(s).name in _DIAGRAM_FILES]
+    # Skip archspec's own test fixtures — they are golden references, not generated artefacts.
+    return [
+        s for s in staged
+        if s.endswith(".mmd")
+        and Path(s).name in _DIAGRAM_FILES
+        and not s.startswith("tests/golden/")
+    ]
 
 
 def run(staged: list[str], cwd: Path | None = None) -> list[Finding]:
