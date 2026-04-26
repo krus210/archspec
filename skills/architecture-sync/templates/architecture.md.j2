@@ -1,0 +1,89 @@
+<!-- archspec:managed-region:start -->
+<!-- generated from SERVICE_MAP.yaml — do not edit by hand -->
+
+# {{ service.name }} — Architecture
+
+**Domain:** {{ service.domain }}
+**Team:** {{ service.team }}
+**Language:** {{ service.language }}
+**Repo:** {{ service.repo }}
+**Owners:** primary {{ service.ownership.primary }} · oncall {{ service.ownership.oncall }}
+
+## Responsibilities
+{% for r in service.responsibilities %}
+- {{ r }}
+{% endfor %}
+
+## Invariants
+{% for inv in service.invariants %}
+- {{ inv }}
+{% endfor %}
+
+## API
+Version: {{ api.version }}
+{% if api.endpoints %}
+| Endpoint | Protocol | Idempotent | SLA p99 |
+| --- | --- | --- | --- |
+{% for ep in api.endpoints | sort(attribute="name") %}
+| {{ ep.name }} | {{ ep.protocol }} | {{ "yes" if ep.idempotency.required else "no" }} | {{ ep.sla.p99_latency }} |
+{% endfor %}
+{% else %}
+_No endpoints declared._
+{% endif %}
+
+## Dependencies
+### Sync downstream
+{% for d in dependencies.downstream.sync | sort(attribute="service") %}
+- **{{ d.service }}** — timeout {{ d.timeout }}, retries {{ d.retries }}, fallback `{{ d.fallback }}`
+{% else %}
+_None._
+{% endfor %}
+
+### Async downstream
+{% for d in dependencies.downstream.async | sort(attribute="topic") %}
+- **{{ d.topic }}** ({{ d.qos }})
+{% else %}
+_None._
+{% endfor %}
+
+### Storage
+{% for s in dependencies.storage | sort(attribute="name") %}
+- **{{ s.type }}:{{ s.name }}** — owned by {{ s.owned_by }}
+{% else %}
+_None._
+{% endfor %}
+
+## Events
+**Published:**
+{% for t in events.published | sort(attribute="topic") %}
+- {{ t.topic }} (v{{ t.version }})
+{% else %}
+_None._
+{% endfor %}
+
+**Consumed:**
+{% for t in events.consumed | sort(attribute="topic") %}
+- {{ t.topic }} (≥ v{{ t.expected_version }})
+{% else %}
+_None._
+{% endfor %}
+
+## Consistency
+- **Model:** {{ consistency.model }}
+- **Bounded aggregate:** {{ consistency.bounded_aggregate }}
+- **Write path:** {{ consistency.write_path.pattern }}
+- **Read path:** {{ consistency.read_path.consistency }}
+
+## Concurrency
+{% for a in concurrency.aggregates | sort(attribute="name") %}
+- **{{ a.name }}** — {{ a.write_strategy }}
+{% else %}
+_No aggregates declared._
+{% endfor %}
+
+## Diagrams
+- [Context]({{ diagram_dir }}/context.mmd)
+- [Container]({{ diagram_dir }}/container.mmd)
+- [Sequence]({{ diagram_dir }}/sequence.mmd)
+
+<!-- archspec:managed-region:end -->

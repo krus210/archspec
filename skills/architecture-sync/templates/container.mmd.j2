@@ -1,0 +1,21 @@
+%% archspec container diagram for {{ service.name }}
+flowchart TB
+  subgraph svc_box["{{ service.name }}"]
+    direction TB
+    svc[{{ service.name }}]
+{% for ep in endpoints | sort(attribute="name") %}
+    ep_{{ ep.name | lower }}[{{ ep.protocol }} {{ ep.name }}]
+{% endfor %}
+  end
+{% for s in storage | sort(attribute="name") %}
+  svc -.-> store_{{ s.slug }}[("{{ s.type }}: {{ s.name }}")]
+{% endfor %}
+{% for d in downstream_sync | sort(attribute="service") %}
+  svc -->|sync| down_{{ d.slug }}[{{ d.service }}]
+{% endfor %}
+{% for t in published | sort(attribute="topic") %}
+  svc ==>|publish v{{ t.version }}| pub_{{ t.slug }}>{{ t.topic }}]
+{% endfor %}
+{% for t in consumed | sort(attribute="topic") %}
+  con_{{ t.slug }}>{{ t.topic }}] ==>|consume| svc
+{% endfor %}

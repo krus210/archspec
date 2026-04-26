@@ -1,0 +1,25 @@
+%% archspec sequence diagram (write path) for {{ service.name }}
+sequenceDiagram
+  autonumber
+  participant client as Client
+  participant svc as {{ service.name }}
+{% for d in downstream_sync | sort(attribute="service") %}
+  participant {{ d.slug }} as {{ d.service }}
+{% endfor %}
+{% for s in storage | sort(attribute="name") %}
+  participant {{ s.slug }} as {{ s.type }}:{{ s.name }}
+{% endfor %}
+{% for ep in endpoints | sort(attribute="name") %}
+  client->>svc: {{ ep.protocol }} {{ ep.name }}
+  {% if ep.idempotency.required %}
+  Note over svc: read X-Idempotency-Key
+  {% endif %}
+  {% for d in downstream_sync | sort(attribute="service") %}
+  svc->>{{ d.slug }}: call (timeout {{ d.timeout }})
+  {{ d.slug }}-->>svc: response
+  {% endfor %}
+  {% for s in storage | sort(attribute="name") %}
+  svc->>{{ s.slug }}: write
+  {% endfor %}
+  svc-->>client: response
+{% endfor %}

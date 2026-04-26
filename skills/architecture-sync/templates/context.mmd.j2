@@ -1,0 +1,21 @@
+%% archspec context diagram for {{ service.name }}
+%% generated from SERVICE_MAP.yaml — do not edit by hand
+flowchart LR
+  subgraph this["{{ service.name }}"]
+    svc[{{ service.name }}]
+  end
+{% for u in upstream | sort(attribute="name") %}
+  upstream_{{ u.slug }}[{{ u.name }}] --> svc
+{% endfor %}
+{% for d in downstream_sync | sort(attribute="service") %}
+  svc --> downstream_{{ d.slug }}[{{ d.service }}]
+{% endfor %}
+{% for s in storage | sort(attribute="name") %}
+  svc -.-> storage_{{ s.slug }}[("{{ s.type }}: {{ s.name }}")]
+{% endfor %}
+{% for t in published | sort(attribute="topic") %}
+  svc ==>|publish| topic_{{ t.slug }}>{{ t.topic }}]
+{% endfor %}
+{% for t in consumed | sort(attribute="topic") %}
+  topic_in_{{ t.slug }}>{{ t.topic }}] ==>|consume| svc
+{% endfor %}
