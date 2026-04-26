@@ -8,11 +8,8 @@ def test_plugin_manifest_loads_and_has_required_fields():
     manifest_path = ROOT / ".claude-plugin" / "plugin.json"
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["name"] == "archspec"
-    assert data["version"] == "0.1.2"
+    assert data["version"] == "0.1.3"
     assert "description" in data
-    assert data["commands"] == "commands/"
-    assert data["skills"] == "skills/"
-    assert data["hooks"] == "hooks/"
 
 
 def test_commands_directory_has_all_expected_files():

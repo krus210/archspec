@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-04-26
+
+### Fixed
+- `.claude-plugin/plugin.json` no longer declares `commands`, `skills` or `hooks` as directory paths. Claude Code discovers `commands/` and `skills/` automatically by convention, and the `hooks` field is reserved for Claude Code event hook configuration (`PostToolUse` etc.), not for git hooks. The previous values failed manifest validation on `/plugin install`.
+
 ## [0.1.2] - 2026-04-26
 
 ### Fixed
