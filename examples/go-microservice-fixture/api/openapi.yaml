@@ -1,0 +1,11 @@
+openapi: 3.0.0
+info:
+  title: listings-svc
+  version: "1.0.0"
+paths:
+  /listings:
+    post:
+      summary: Create a listing
+      responses:
+        "201":
+          description: created

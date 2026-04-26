@@ -1,0 +1,9 @@
+%% archspec context diagram for listings-svc
+%% generated from SERVICE_MAP.yaml — do not edit by hand
+flowchart LR
+  subgraph this["listings-svc"]
+    svc[listings-svc]
+  end
+  upstream_frontend[frontend] --> svc
+  svc -.-> storage_listings-db[("postgres: listings_db")]
+  svc ==>|publish| topic_listings-changed-v1>listings.changed.v1]

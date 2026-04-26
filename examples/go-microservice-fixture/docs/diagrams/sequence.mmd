@@ -1,0 +1,10 @@
+%% archspec sequence diagram (write path) for listings-svc
+sequenceDiagram
+  autonumber
+  participant client as Client
+  participant svc as listings-svc
+  participant listings-db as postgres:listings_db
+  client->>svc: HTTP CreateListing
+  Note over svc: read X-Idempotency-Key
+  svc->>listings-db: write
+  svc-->>client: response

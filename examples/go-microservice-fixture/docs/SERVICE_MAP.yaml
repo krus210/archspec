@@ -1,0 +1,68 @@
+metadata:
+  schema_version: "1.0"
+  source_of_truth: local
+  drift_check_in_ci: true
+  last_reviewed: "2026-04-25"
+service:
+  name: "listings-svc"
+  team: "marketplace"
+  language: go
+  repo: "github.com/example/listings-svc"
+  domain: "marketplace.listings"
+  ownership:
+    primary: "@alice"
+    oncall: "@bob"
+  responsibilities:
+    - "create and update listings"
+    - "publish ListingChanged events"
+  invariants:
+    - "listings are immutable after publication"
+api:
+  version: 1
+  endpoints:
+    - name: CreateListing
+      protocol: HTTP
+      idempotency:
+        required: true
+        key_source: "header: X-Idempotency-Key"
+        key_ttl: "24h"
+        storage: "redis: idemp:{key}"
+        on_duplicate: "return cached response"
+      contract: "api/openapi.yaml#/paths/~1listings/post"
+      sla:
+        p99_latency: "200ms"
+        availability: "99.95%"
+  changelog: []
+dependencies:
+  upstream:
+    - "frontend"
+  downstream:
+    sync: []
+    async: []
+  storage:
+    - type: postgres
+      name: listings_db
+      owned_by: "listings-svc"
+events:
+  published:
+    - topic: "listings.changed.v1"
+      contract: "schemas/listings_changed_v1.json"
+      version: 1
+  consumed: []
+consistency:
+  model: "eventual"
+  bounded_aggregate: "Listing"
+  write_path:
+    pattern: "outbox"
+  read_path:
+    consistency: "read-your-writes"
+  cross_service_invariants: []
+concurrency:
+  aggregates:
+    - name: "Listing"
+      write_strategy: optimistic
+  hot_keys: []
+  shared_state: []
+go_extensions:
+  optimistic_locking_field: "row_version"
+  outbox_table: "outbox_events"

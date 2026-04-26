@@ -1,0 +1,9 @@
+%% archspec container diagram for listings-svc
+flowchart TB
+  subgraph svc_box["listings-svc"]
+    direction TB
+    svc[listings-svc]
+    ep_createlisting[HTTP CreateListing]
+  end
+  svc -.-> store_listings-db[("postgres: listings_db")]
+  svc ==>|publish v1| pub_listings-changed-v1>listings.changed.v1]
