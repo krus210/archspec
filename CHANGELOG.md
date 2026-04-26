@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `/archspec:init` now auto-discovers HTTP/gRPC endpoints, downstream gRPC dependencies, storage clients (postgres/redis/mongodb/sql/in-memory), and messaging events (Kafka via `segmentio/kafka-go` and `IBM/sarama`; NATS core publish/subscribe and JetStream publish via `nats-io/nats.go`) by scanning the service's Go source code. After the scan, an interactive questionnaire (`AskUserQuestion`) fills in fields the scanner cannot extract (SLA, idempotency, timeouts, fallback strategy). The new scanner is `skills/architecture-sync/scripts/scan_go.py` — a pure-stdlib regex-based, read-only CLI that emits a JSON discovery report. Backends the scanner does not know (RabbitMQ, GCP Pub/Sub, in-house queues) cause **no failure** — they simply yield empty event arrays, and the questionnaire prompts the user to enumerate those events manually.
+
 ## [0.1.3] - 2026-04-26
 
 ### Fixed
