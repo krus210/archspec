@@ -1,0 +1,79 @@
+metadata:
+  schema_version: "1.0"
+  source_of_truth: local
+  drift_check_in_ci: true
+  last_reviewed: "2026-04-25"
+service:
+  name: example-service
+  team: platform
+  language: go
+  repo: github.com/example/service
+  domain: example
+  ownership:
+    primary: "@alice"
+    oncall: "@oncall"
+  responsibilities:
+    - "expose REST API"
+  invariants:
+    - "all writes go through the outbox"
+api:
+  version: 1
+  endpoints: []
+  changelog: []
+dependencies:
+  upstream: []
+  downstream:
+    sync: []
+    async: []
+  storage: []
+events:
+  published: []
+  consumed: []
+consistency:
+  model: eventual
+  bounded_aggregate: example
+  write_path:
+    pattern: outbox
+  read_path:
+    consistency: eventual
+  cross_service_invariants: []
+concurrency:
+  aggregates: []
+  hot_keys: []
+  shared_state: []
+edge_cases:
+  - id: EC-001
+    description: "duplicate listing creation"
+    test: "internal/handler/listing_test.go::TestEC001"
+scenarios:
+  - id: S-001
+    description: "happy path create listing"
+    test: "tests/e2e/scenario_001_test.go"
+    monitor: "synthetic-ms-listings-create"
+failure_modes:
+  - when: "kafka unavailable"
+    user_sees: "create succeeds, indexer eventually catches up"
+    detection: "lag metric > 30s"
+architecture_rules:
+  facade_only:
+    - service: payment-service
+      allowed_via: payment-facade
+      reason: "PCI scope, no direct access"
+  forbidden_imports:
+    - pattern: "**/internal/**"
+      from_external_service: true
+  required_layers:
+    - handler
+    - service
+    - repository
+exceptions:
+  - rule: AI-001
+    scope:
+      endpoint: "GET /admin/health"
+    reason: "internal admin endpoint, no client retries"
+    approved_by: "@alice"
+    adr: "docs/adr/0042-skip-idempotency-on-admin.md"
+    expires: "2026-12-31"
+go_extensions:
+  optimistic_locking_field: "row_version"
+  outbox_table: "outbox_events"

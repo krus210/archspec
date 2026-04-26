@@ -1,0 +1,285 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://archspec.dev/schema/servicemap.schema.json",
+  "title": "SERVICE_MAP",
+  "type": "object",
+  "required": ["metadata", "service", "api", "dependencies", "events", "consistency", "concurrency"],
+  "additionalProperties": false,
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["schema_version", "source_of_truth", "drift_check_in_ci", "last_reviewed"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+        "source_of_truth": { "enum": ["local", "external"] },
+        "drift_check_in_ci": { "type": "boolean" },
+        "last_reviewed": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["name", "team", "language", "repo", "domain", "ownership", "responsibilities", "invariants"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "team": { "type": "string", "minLength": 1 },
+        "language": { "type": "string", "minLength": 1 },
+        "repo": { "type": "string", "minLength": 1 },
+        "domain": { "type": "string", "minLength": 1 },
+        "ownership": {
+          "type": "object",
+          "required": ["primary", "oncall"],
+          "additionalProperties": false,
+          "properties": {
+            "primary": { "type": "string" },
+            "oncall": { "type": "string" }
+          }
+        },
+        "responsibilities": { "type": "array", "items": { "type": "string" } },
+        "invariants": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "api": {
+      "type": "object",
+      "required": ["version", "endpoints", "changelog"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "endpoints": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/endpoint" }
+        },
+        "changelog": { "type": "array" }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "required": ["upstream", "downstream", "storage"],
+      "additionalProperties": false,
+      "properties": {
+        "upstream": { "type": "array" },
+        "downstream": {
+          "type": "object",
+          "required": ["sync", "async"],
+          "additionalProperties": false,
+          "properties": {
+            "sync": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["service", "timeout", "retries", "fallback", "on_failure"],
+                "additionalProperties": false,
+                "properties": {
+                  "service": { "type": "string" },
+                  "timeout": { "type": "string" },
+                  "retries": { "type": "integer", "minimum": 0 },
+                  "fallback": { "type": "string" },
+                  "on_failure": { "type": "string" }
+                }
+              }
+            },
+            "async": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["topic", "contract", "qos"],
+                "additionalProperties": false,
+                "properties": {
+                  "topic": { "type": "string" },
+                  "contract": { "type": "string" },
+                  "qos": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "name", "owned_by"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "type": "string" },
+              "name": { "type": "string" },
+              "owned_by": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "object",
+      "required": ["published", "consumed"],
+      "additionalProperties": false,
+      "properties": {
+        "published": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["topic", "contract", "version"],
+            "additionalProperties": false,
+            "properties": {
+              "topic": { "type": "string" },
+              "contract": { "type": "string" },
+              "version": { "type": "integer" }
+            }
+          }
+        },
+        "consumed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["topic", "contract", "expected_version"],
+            "additionalProperties": false,
+            "properties": {
+              "topic": { "type": "string" },
+              "contract": { "type": "string" },
+              "expected_version": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "consistency": {
+      "type": "object",
+      "required": ["model", "bounded_aggregate", "write_path", "read_path", "cross_service_invariants"],
+      "additionalProperties": false,
+      "properties": {
+        "model": { "enum": ["eventual", "strong"] },
+        "bounded_aggregate": { "type": "string" },
+        "write_path": {
+          "type": "object",
+          "required": ["pattern"],
+          "additionalProperties": false,
+          "properties": { "pattern": { "enum": ["outbox", "direct", "saga"] } }
+        },
+        "read_path": {
+          "type": "object",
+          "required": ["consistency"],
+          "additionalProperties": false,
+          "properties": { "consistency": { "enum": ["read-your-writes", "eventual"] } }
+        },
+        "cross_service_invariants": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "required": ["aggregates", "hot_keys", "shared_state"],
+      "additionalProperties": false,
+      "properties": {
+        "aggregates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "write_strategy"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "write_strategy": { "enum": ["optimistic", "pessimistic"] }
+            }
+          }
+        },
+        "hot_keys": { "type": "array", "items": { "type": "string" } },
+        "shared_state": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "edge_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "test"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^EC-\\d+$" },
+          "description": { "type": "string" },
+          "test": { "type": "string" }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "test"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^S-\\d+$" },
+          "description": { "type": "string" },
+          "test": { "type": "string" },
+          "monitor": { "type": "string" }
+        }
+      }
+    },
+    "failure_modes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["when", "user_sees", "detection"],
+        "additionalProperties": false,
+        "properties": {
+          "when": { "type": "string" },
+          "user_sees": { "type": "string" },
+          "detection": { "type": "string" }
+        }
+      }
+    },
+    "architecture_rules": { "type": "object" },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "scope", "reason", "approved_by", "adr"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": { "type": "string", "pattern": "^(DET|AI)-\\d{3}$" },
+          "scope": { "type": "object" },
+          "reason": { "type": "string", "minLength": 1 },
+          "approved_by": { "type": "string", "minLength": 1 },
+          "adr": { "type": "string", "minLength": 1 },
+          "expires": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+        }
+      }
+    }
+  },
+  "patternProperties": {
+    "_extensions$": { "type": "object" }
+  },
+  "definitions": {
+    "endpoint": {
+      "type": "object",
+      "required": ["name", "protocol", "idempotency", "contract", "sla"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "protocol": { "enum": ["HTTP", "gRPC"] },
+        "idempotency": { "$ref": "#/definitions/idempotency" },
+        "contract": { "type": "string" },
+        "sla": {
+          "type": "object",
+          "required": ["p99_latency", "availability"],
+          "additionalProperties": false,
+          "properties": {
+            "p99_latency": { "type": "string" },
+            "availability": { "type": "string" }
+          }
+        }
+      }
+    },
+    "idempotency": {
+      "type": "object",
+      "required": ["required"],
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "key_source": { "type": "string" },
+        "key_ttl": { "type": "string" },
+        "storage": { "type": "string" },
+        "on_duplicate": { "type": "string" }
+      },
+      "if": { "properties": { "required": { "const": true } } },
+      "then": { "required": ["key_source", "storage"] }
+    }
+  }
+}
