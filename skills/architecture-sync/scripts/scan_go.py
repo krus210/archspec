@@ -237,7 +237,11 @@ _STORAGE_PATTERNS: list[tuple[str, str, re.Pattern[str]]] = [
     ("redis", "high", re.compile(r"\bredis\.New(?:Failover)?Client\s*\(")),
     ("mongodb", "high", re.compile(r"\bmongo\.Connect\s*\(")),
     ("sql", "medium", re.compile(r"\bsql(?:x)?\.Open\s*\(")),
-    ("in-memory", "low", re.compile(r"\b[A-Za-z_]\w*\.New[A-Z][A-Za-z0-9_]*MemoryRepo\s*\(|\bNewMemoryRepo\s*\(")),
+    (
+        "in-memory",
+        "low",
+        re.compile(r"\b[A-Za-z_]\w*\.New[A-Z][A-Za-z0-9_]*MemoryRepo\s*\(|\bNewMemoryRepo\s*\("),
+    ),
 ]
 
 

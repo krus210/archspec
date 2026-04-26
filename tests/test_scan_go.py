@@ -106,7 +106,9 @@ def test_scan_grpc_server_finds_registered_services():
 
 def test_scan_http_routes_finds_all_routers():
     report = _run(FIXTURES / "http_routes")
-    paths = sorted({(e["method"], e["path"]) for e in report["endpoints"] if e["protocol"] == "HTTP"})
+    paths = sorted(
+        {(e["method"], e["path"]) for e in report["endpoints"] if e["protocol"] == "HTTP"}
+    )
     assert paths == [
         ("ANY", "/api/v1/tasks"),
         ("ANY", "/api/v1/tasks/"),
