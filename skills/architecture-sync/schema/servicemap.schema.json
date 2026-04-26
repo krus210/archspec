@@ -58,7 +58,25 @@
       "required": ["upstream", "downstream", "storage"],
       "additionalProperties": false,
       "properties": {
-        "upstream": { "type": "array" },
+        "upstream": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "protocol": { "enum": ["HTTP", "gRPC"] },
+                  "endpoints_used": { "type": "array", "items": { "type": "string" } },
+                  "discovered_via": { "enum": ["monorepo-scan", "manual", "k8s-todo"] }
+                }
+              }
+            ]
+          }
+        },
         "downstream": {
           "type": "object",
           "required": ["sync", "async"],

@@ -1,12 +1,11 @@
 %% archspec container diagram for {{ service.name }}
-flowchart TB
+flowchart LR
   subgraph svc_box["{{ service.name }}"]
-    direction TB
     svc[{{ service.name }}]
-{% for ep in endpoints | sort(attribute="name") %}
-    ep_{{ ep.name | lower }}[{{ ep.protocol }} {{ ep.name }}]
-{% endfor %}
   end
+{% for u in upstream | sort(attribute="name") %}
+  up_{{ u.slug }}[{{ u.name }}]{% if u.endpoints_used %} -->|{{ u.endpoints_used | join(", ") }}|{% else %} -->{% endif %} svc
+{% endfor %}
 {% for s in storage | sort(attribute="name") %}
   svc -.-> store_{{ s.slug }}[("{{ s.type }}: {{ s.name }}")]
 {% endfor %}

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-26
+
+### Added
+- **Reverse scan** mode in `scan_go.py`: `--reverse-scan <repo-root> --target <service-name>` walks a monorepo, finds Go files importing `<...>/<domain>/v1`, and emits a JSON list of consumer services with the gRPC method names they call (extracted from `<alias>.<Method>Request{` literals). Enables auto-population of `dependencies.upstream[]` and is the foundation for future circular-dependency checks.
+- Bootstrap step 3b-rev in `architecture-sync` skill: prompts the user for a monorepo path, runs the reverse scanner, and writes confirmed consumers to `dependencies.upstream[]`. Falls back to `AskUserQuestion` (manual list) when the path is not provided; records a `k8s-todo` placeholder so future versions can derive consumers from k8s/service-mesh telemetry.
+- Structured form for `dependencies.upstream[]` items: `{name, protocol, endpoints_used, discovered_via}`. Schema accepts both the legacy bare-string form (`- api-gateway`) and the new object form for backwards compatibility.
+
+### Changed
+- **Container diagram (`container.mmd`)** no longer renders endpoints as separate boxes inside the service container — that was a misuse of the C4 container level. Instead, upstream consumers (when present) are rendered as boxes outside the service with arrows pointing in; the methods they call appear as edge labels (e.g. `api-gateway -->|GetCity, GetDistance| svc`).
+- Container diagram now uses `flowchart LR` (was `TB`), matching the context diagram.
+
 ## [0.3.0] - 2026-04-26
 
 ### Added

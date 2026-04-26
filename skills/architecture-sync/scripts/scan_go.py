@@ -7,11 +7,19 @@ record in `SERVICE_MAP.yaml`.
 
 Read-only. Deterministic — same input ⇒ same JSON bytes.
 
-CLI: scan_go.py <service_dir>
+CLI:
+  scan_go.py <service_dir>
+      Forward scan: discover artefacts produced/owned by the given service.
+
+  scan_go.py --reverse-scan <repo_root> --target <service-name>
+      Reverse scan: discover *consumers* of the target service in a monorepo.
+      Looks for Go files importing `<...>/<domain>/v1` (where domain is derived
+      from the service name) and extracts the gRPC method names that are used
+      via `<alias>.<Method>Request{` patterns.
 
 Exit codes:
   0 — scan completed (report on stdout, possibly with empty arrays)
-  2 — usage error (missing/unreadable directory)
+  2 — usage error (missing/unreadable directory or arguments)
 """
 
 from __future__ import annotations
@@ -435,10 +443,135 @@ def scan(service_dir: Path) -> dict:
     }
 
 
+_SERVICE_NAME_SUFFIXES = ("-service", "_service")
+
+
+def _domain_from_service_name(name: str) -> str:
+    """`geo-service` → `geo`, `task_service` → `task`, `geo` → `geo`."""
+    n = name
+    for suf in _SERVICE_NAME_SUFFIXES:
+        if n.endswith(suf):
+            return n[: -len(suf)]
+    return n
+
+
+_CONSUMER_DIR_MARKERS = ("services", "cmd", "apps")
+
+
+def _detect_consumer_service(go_file: Path, repo_root: Path) -> str:
+    """Walk go_file path against repo_root to find the owning service name.
+
+    Recognises common monorepo layouts: `services/<name>/...`, `cmd/<name>/...`,
+    `apps/<name>/...`. Falls back to the top-level directory under repo_root.
+    """
+    rel_parts = go_file.relative_to(repo_root).parts
+    for i, part in enumerate(rel_parts[:-1]):
+        if part in _CONSUMER_DIR_MARKERS and i + 1 < len(rel_parts):
+            return rel_parts[i + 1]
+    return rel_parts[0] if rel_parts else go_file.parent.name
+
+
+def _iter_repo_go_files(repo_root: Path) -> list[Path]:
+    out: list[Path] = []
+    for p in sorted(repo_root.rglob("*.go")):
+        if p.name.endswith("_test.go"):
+            continue
+        if any(part in EXCLUDE_DIRS for part in p.relative_to(repo_root).parts[:-1]):
+            continue
+        out.append(p)
+    return out
+
+
+def reverse_scan(repo_root: Path, target: str) -> dict:
+    """Discover consumers of ``target`` service in a monorepo.
+
+    Heuristic: a Go file is a consumer if it imports a path ending in
+    ``/<domain>/v1`` (where domain = target without `-service` suffix) and
+    references at least one ``<alias>.<Method>Request{`` pattern.
+    """
+    domain = _domain_from_service_name(target)
+    import_re = re.compile(
+        r'(?:([A-Za-z_]\w*)\s+)?"[^"]*/' + re.escape(domain) + r'/v1"'
+    )
+    files = _iter_repo_go_files(repo_root)
+    by_consumer: dict[str, dict] = {}
+    for go_file in files:
+        rel = go_file.relative_to(repo_root)
+        # Skip the target's own directory.
+        if target in rel.parts:
+            continue
+        text = go_file.read_text(encoding="utf-8", errors="replace")
+        m_import = import_re.search(text)
+        if m_import is None:
+            continue
+        alias = m_import.group(1) or "v1"
+        # Method names used via `<alias>.<Method>Request{` literal.
+        method_re = re.compile(
+            r'\b' + re.escape(alias) + r'\.([A-Z][A-Za-z0-9_]*)Request\b'
+        )
+        methods = sorted({m.group(1) for m in method_re.finditer(text)})
+        consumer = _detect_consumer_service(go_file, repo_root)
+        if consumer == target:
+            continue
+        entry = by_consumer.setdefault(
+            consumer,
+            {
+                "name": consumer,
+                "protocol": "gRPC",
+                "endpoints_used": [],
+                "source": f"{rel}:{_line_of(text, m_import.start())}",
+                "confidence": "high" if methods else "medium",
+                "discovered_via": "monorepo-scan",
+            },
+        )
+        merged = sorted(set(entry["endpoints_used"]) | set(methods))
+        entry["endpoints_used"] = merged
+        if methods and entry["confidence"] != "high":
+            entry["confidence"] = "high"
+    consumers = sorted(by_consumer.values(), key=lambda c: c["name"])
+    return {
+        "repo_root": str(repo_root),
+        "target": target,
+        "files_scanned": len(files),
+        "consumers": consumers,
+    }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="archspec Go scanner")
-    parser.add_argument("service_dir", type=Path, help="Path to the Go service root")
+    parser.add_argument(
+        "service_dir",
+        type=Path,
+        nargs="?",
+        help="Path to the Go service root (forward scan)",
+    )
+    parser.add_argument(
+        "--reverse-scan",
+        type=Path,
+        metavar="REPO_ROOT",
+        help="Run reverse scan over a monorepo to discover consumers of --target",
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        help="Target service name for reverse scan (e.g. geo-service)",
+    )
     args = parser.parse_args(argv)
+
+    if args.reverse_scan is not None:
+        if args.target is None:
+            print("error: --reverse-scan requires --target", file=sys.stderr)
+            return 2
+        if not args.reverse_scan.is_dir():
+            print(f"error: not a directory: {args.reverse_scan}", file=sys.stderr)
+            return 2
+        report = reverse_scan(args.reverse_scan, args.target)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+
+    if args.service_dir is None:
+        parser.print_usage(sys.stderr)
+        return 2
     if not args.service_dir.is_dir():
         print(f"error: not a directory: {args.service_dir}", file=sys.stderr)
         return 2
