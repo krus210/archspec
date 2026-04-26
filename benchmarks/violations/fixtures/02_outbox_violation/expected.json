@@ -1,0 +1,7 @@
+[
+  {
+    "rule": "AI-002",
+    "file": "handler.go",
+    "line": 12
+  }
+]

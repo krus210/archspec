@@ -1,0 +1,112 @@
+metadata:
+  schema_version: "1.0"
+  source_of_truth: local
+  drift_check_in_ci: true
+  last_reviewed: "2026-04-25"
+service:
+  name: listings-service
+  team: marketplace
+  language: go
+  repo: github.com/example/listings-service
+  domain: listings
+  ownership:
+    primary: "@alice"
+    oncall: "@listings-oncall"
+  responsibilities:
+    - "expose REST API for listings"
+    - "publish ListingCreated events"
+  invariants:
+    - "all writes go through the outbox"
+    - "listing IDs are monotonic"
+api:
+  version: 2
+  endpoints:
+    - name: CreateListing
+      protocol: HTTP
+      idempotency:
+        required: true
+        key_source: header:Idempotency-Key
+        key_ttl: "24h"
+        storage: redis
+        on_duplicate: return_original
+      contract: openapi/listings.yaml#/paths/~1listings/post
+      sla:
+        p99_latency: "200ms"
+        availability: "99.9%"
+    - name: GetListing
+      protocol: HTTP
+      idempotency:
+        required: false
+      contract: openapi/listings.yaml#/paths/~1listings~1{id}/get
+      sla:
+        p99_latency: "100ms"
+        availability: "99.95%"
+  changelog: []
+dependencies:
+  upstream:
+    - api-gateway
+  downstream:
+    sync:
+      - service: pricing-service
+        timeout: "300ms"
+        retries: 2
+        fallback: "cache"
+        on_failure: "degrade"
+    async:
+      - topic: "listings.created"
+        contract: "schemas/listing_created.json"
+        qos: at-least-once
+  storage:
+    - type: postgres
+      name: listings_db
+      owned_by: listings-service
+    - type: redis
+      name: idempotency_cache
+      owned_by: listings-service
+events:
+  published:
+    - topic: "listings.created"
+      contract: "schemas/listing_created.json"
+      version: 1
+  consumed:
+    - topic: "users.deleted"
+      contract: "schemas/user_deleted.json"
+      expected_version: 1
+consistency:
+  model: eventual
+  bounded_aggregate: listing
+  write_path:
+    pattern: outbox
+  read_path:
+    consistency: read-your-writes
+  cross_service_invariants:
+    - "a listing always has a valid owner_id"
+concurrency:
+  aggregates:
+    - name: listing
+      write_strategy: optimistic
+  hot_keys:
+    - "listing:popular"
+  shared_state:
+    - "idempotency_cache"
+edge_cases:
+  - id: EC-001
+    description: "duplicate listing creation"
+    test: "internal/handler/listing_test.go::TestEC001"
+scenarios:
+  - id: S-001
+    description: "happy path create listing"
+    test: "tests/e2e/scenario_001_test.go"
+    monitor: "synthetic-ms-listings-create"
+failure_modes:
+  - when: "kafka unavailable"
+    user_sees: "create succeeds, indexer eventually catches up"
+    detection: "lag metric > 30s"
+exceptions:
+  - rule: AI-001
+    scope:
+      endpoint: "GET /admin/health"
+    reason: "internal admin endpoint, no client retries"
+    approved_by: "@alice"
+    adr: "docs/adr/0042-skip-idempotency-on-admin.md"
+    expires: "2026-12-31"

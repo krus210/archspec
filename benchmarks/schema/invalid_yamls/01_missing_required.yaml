@@ -1,0 +1,30 @@
+metadata:
+  schema_version: "1.0"
+  source_of_truth: local
+  drift_check_in_ci: true
+  last_reviewed: "2026-04-25"
+api:
+  version: 1
+  endpoints: []
+  changelog: []
+dependencies:
+  upstream: []
+  downstream:
+    sync: []
+    async: []
+  storage: []
+events:
+  published: []
+  consumed: []
+consistency:
+  model: eventual
+  bounded_aggregate: example
+  write_path:
+    pattern: outbox
+  read_path:
+    consistency: eventual
+  cross_service_invariants: []
+concurrency:
+  aggregates: []
+  hot_keys: []
+  shared_state: []

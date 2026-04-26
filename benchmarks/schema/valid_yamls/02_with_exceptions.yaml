@@ -1,0 +1,65 @@
+metadata:
+  schema_version: "1.0"
+  source_of_truth: local
+  drift_check_in_ci: true
+  last_reviewed: "2026-04-25"
+service:
+  name: exceptions-service
+  team: platform
+  language: go
+  repo: github.com/example/exceptions-service
+  domain: example
+  ownership:
+    primary: "@alice"
+    oncall: "@oncall"
+  responsibilities:
+    - "expose REST API"
+  invariants:
+    - "all writes go through the outbox"
+api:
+  version: 1
+  endpoints:
+    - name: AdminHealth
+      protocol: HTTP
+      idempotency:
+        required: false
+      contract: openapi/admin.yaml#/paths/~1admin~1health/get
+      sla:
+        p99_latency: "50ms"
+        availability: "99.9%"
+  changelog: []
+dependencies:
+  upstream: []
+  downstream:
+    sync: []
+    async: []
+  storage: []
+events:
+  published: []
+  consumed: []
+consistency:
+  model: eventual
+  bounded_aggregate: example
+  write_path:
+    pattern: outbox
+  read_path:
+    consistency: eventual
+  cross_service_invariants: []
+concurrency:
+  aggregates: []
+  hot_keys: []
+  shared_state: []
+exceptions:
+  - rule: AI-001
+    scope:
+      endpoint: "GET /admin/health"
+    reason: "internal admin endpoint, no client retries"
+    approved_by: "@alice"
+    adr: "docs/adr/0042-skip-idempotency-on-admin.md"
+    expires: "2026-12-31"
+  - rule: DET-002
+    scope:
+      file: "internal/legacy/timestamps.go"
+    reason: "legacy code path scheduled for removal"
+    approved_by: "@bob"
+    adr: "docs/adr/0043-allow-legacy-timestamps.md"

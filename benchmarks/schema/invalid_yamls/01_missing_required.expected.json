@@ -1,0 +1,4 @@
+{
+  "expected_error_code": "DET-001",
+  "expected_message_contains": "'service' is a required property"
+}
