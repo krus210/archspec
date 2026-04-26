@@ -65,6 +65,20 @@ cd path/to/your-service
 This creates `docs/SERVICE_MAP.yaml`, generates initial diagrams + `ARCHITECTURE.md`,
 installs the pre-commit hook, and appends the archspec block to `CLAUDE.md`.
 
+## What `/archspec:init` does
+
+For Go services, `init` runs a read-only scanner over your source files and pre-fills `docs/SERVICE_MAP.yaml` with what it finds:
+
+- HTTP endpoints from `net/http`, `chi`, `gin`, `echo` route registration
+- gRPC endpoints from `pb.RegisterXxxServer` calls
+- Downstream gRPC dependencies from `grpc.NewClient` / `grpc.Dial`, with the target service name resolved from address constants where possible
+- Storage clients: postgres (`pgx`, `pgxpool`), redis (`go-redis`), mongodb (`mongo-driver`), generic SQL (`sqlx`/`database/sql`), and in-memory repository factories
+- Messaging topics from Kafka (`segmentio/kafka-go` writer/reader, `IBM/sarama` producer/consumer-group) and NATS (`nats-io/nats.go` core `Publish`/`Subscribe`/`QueueSubscribe` and JetStream `Publish`), with subjects resolved through Go const tables in the same file
+
+For each finding, archspec asks you to confirm it and to supply the fields the scanner cannot extract from code: SLA, idempotency policy, timeouts, retries, fallback strategy, and contract paths. Skipped findings do not enter the YAML.
+
+If the service is not Go, or the scanner finds nothing, `init` falls back to a fully manual questionnaire. **Messaging stacks the scanner does not know yet (RabbitMQ, GCP Pub/Sub, in-house queues) do not cause failures** — events just come back empty and the questionnaire asks you to list them manually. Adding a new backend to the scanner is a small contribution: extend `_MESSAGING_BACKENDS` in `skills/architecture-sync/scripts/scan_go.py` with one publish/subscribe pattern pair plus a fixture.
+
 ## Commands
 
 | Command | Purpose |

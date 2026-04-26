@@ -83,6 +83,129 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
 3. Replace placeholders. Ask the user for: service name, team, language, repo URL, domain. Replace `REPLACE-WITH-DATE` with today's ISO date (asked from the user — do **not** read the system clock).
 
+3a. **Auto-discover from code** (Go services only — skip if `service.language != go`).
+
+   Run the scanner against the service directory (the directory that contains `main.go` or `go.mod`):
+
+   ```bash
+   ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/scan_go.py . > /tmp/archspec-scan.json
+   ```
+
+   Read `/tmp/archspec-scan.json`. The schema is:
+
+   ```
+   { service_dir, files_scanned,
+     endpoints:        [{kind, protocol, method, path|name, source, confidence}, ...],
+     downstream_sync:  [{kind, protocol, service, address_arg, source, confidence}, ...],
+     storage:          [{kind, type, source, confidence}, ...],
+     events_published: [{kind, backend, topic, source, confidence}, ...],
+     events_consumed:  [{kind, backend, topic, source, confidence}, ...] }
+   ```
+
+   `backend` is `"kafka"` or `"nats"` today. Other messaging stacks (RabbitMQ, GCP Pub/Sub, etc.) yield no events — fall back to asking the user explicitly in step 3b.
+
+   If `files_scanned == 0` or every category is empty, tell the user "scanner found no Go artefacts — falling back to manual questionnaire" and skip to step 3b with no findings to confirm.
+
+3b. **Interactive questionnaire** — confirm findings and fill in fields the scanner cannot supply.
+
+   For each `endpoint` finding, use `AskUserQuestion` (one batch per category for fewer round-trips):
+
+   ```
+   Question: "Confirm endpoint <METHOD> <path> (found in <source>, confidence <X>)?"
+   Options:
+     - "Yes — record it"
+     - "Yes, but rename"
+     - "Skip — false positive"
+   ```
+
+   For each accepted endpoint, ask a follow-up batch (single `AskUserQuestion` call with multiple questions):
+
+   - `idempotency.required` — boolean (`Yes` / `No`).
+   - If `required: true`: `key_source` (free text, default `"header: X-Idempotency-Key"`), `storage` (default `"redis: idemp:{key}"`).
+   - `sla.p99_latency` (default `"TODO"`).
+   - `sla.availability` (default `"TODO"`).
+   - `contract` (free text, default `"TODO"`).
+
+   For each `downstream_sync` finding, ask in one `AskUserQuestion` batch:
+
+   - Confirm/skip.
+   - `timeout` (default `"TODO"`).
+   - `retries` (integer, default `0`).
+   - `fallback` (default `"none"`).
+   - `on_failure` (one of: `propagate`, `fail-open`, `fail-closed`, default `propagate`).
+
+   For each `storage` finding, ask:
+
+   - Confirm/skip.
+   - `name` (free text — e.g. `tasks-db`; required by schema).
+   - `owned_by` (default `"this service"`).
+
+   For each `events_published` and `events_consumed` finding, ask:
+
+   - Confirm/skip.
+   - `contract` (default `"TODO"`).
+   - For published: `version` (integer, default `1`).
+   - For consumed: `expected_version` (integer, default `1`).
+
+   The `backend` field on each finding is informational only — the schema does not store it. Use it when phrasing the confirmation question (e.g. "Confirm NATS subject `task.created` (publish, found in usecase/task.go:53)?") so the user knows which transport the topic belongs to.
+
+   After all categories, ask one trailing `AskUserQuestion` — and explicitly mention messaging because the scanner only knows Kafka and NATS:
+
+   > "Are there architectural artefacts the scanner missed? In particular: (a) additional storage, (b) undetected endpoints, (c) async events using a backend other than Kafka or NATS (e.g. RabbitMQ, Pub/Sub, in-house queue), (d) events that use runtime-resolved subjects the scanner cannot follow."
+
+   If yes, prompt the user to enumerate them and add each manually with the same field set as above.
+
+3c. **Write the confirmed findings to `docs/SERVICE_MAP.yaml`** using the `Edit` tool. Build each YAML block from the confirmed answers; do not write rejected items. Schema fields and defaults:
+
+   - `api.endpoints[]`:
+     ```yaml
+     - name: <user-provided or scanner-derived>
+       protocol: HTTP|gRPC
+       idempotency:
+         required: <bool>
+         # if required is true: key_source and storage are required by schema
+         key_source: <user-provided>
+         storage: <user-provided>
+       contract: <user-provided or "TODO">
+       sla:
+         p99_latency: <user-provided or "TODO">
+         availability: <user-provided or "TODO">
+     ```
+   - `dependencies.downstream.sync[]`:
+     ```yaml
+     - service: <scanner-derived>
+       timeout: <user or "TODO">
+       retries: <user or 0>
+       fallback: <user or "none">
+       on_failure: <user or "propagate">
+     ```
+   - `dependencies.storage[]`:
+     ```yaml
+     - type: <scanner-derived: postgres|redis|mongodb|sql|in-memory>
+       name: <user-provided>
+       owned_by: <user or "this service">
+     ```
+   - `events.published[]`:
+     ```yaml
+     - topic: <scanner>
+       contract: <user or "TODO">
+       version: <user or 1>
+     ```
+   - `events.consumed[]`:
+     ```yaml
+     - topic: <scanner>
+       contract: <user or "TODO">
+       expected_version: <user or 1>
+     ```
+
+   After writing, run the validator to confirm the YAML still parses cleanly:
+
+   ```bash
+   ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/validate_servicemap.py docs/SERVICE_MAP.yaml
+   ```
+
+   Exit 0 = continue to step 4. Non-zero = surface the diagnostic and ask the user to amend.
+
 4. Render diagrams + ARCHITECTURE.md (delegate to the main "Procedure" section, steps 2–5).
 
 5. Append the CLAUDE block:
