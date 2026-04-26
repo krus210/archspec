@@ -41,8 +41,11 @@ deterministically from it, and validates code changes against it on two layers:
 ### Option A — Claude Code plugin (recommended)
 
 ```bash
-/plugin install github.com/krus210/archspec
+/plugin marketplace add krus210/archspec
+/plugin install archspec@archspec
 ```
+
+After installation, run `/reload-plugins` (or restart Claude Code) so commands and skills become available.
 
 ### Option B — standalone skills
 

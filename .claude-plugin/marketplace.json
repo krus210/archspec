@@ -1,0 +1,11 @@
+{
+  "name": "archspec",
+  "owner": { "name": "krus210" },
+  "plugins": [
+    {
+      "name": "archspec",
+      "source": ".",
+      "description": "Spec-driven architecture validation for microservices"
+    }
+  ]
+}
