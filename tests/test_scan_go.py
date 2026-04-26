@@ -92,6 +92,22 @@ def test_scan_grpc_client_extracts_downstream_targets():
         assert d["confidence"] in {"high", "medium", "low"}
 
 
+def test_scan_grpc_finds_proto_contract_in_sibling_directory():
+    # Layout: <root>/svc/main.go + <root>/proto/geo/v1/geo.proto.
+    report = _run(FIXTURES / "grpc_with_proto" / "svc")
+    geo = next(e for e in report["endpoints"] if e["protocol"] == "gRPC")
+    assert geo["name"] == "GeoServiceServer"
+    assert geo["contract_hint"].endswith("proto/geo/v1/geo.proto")
+
+
+def test_scan_grpc_without_proto_omits_contract_hint():
+    # The plain grpc_server fixture has no proto/ tree → no contract_hint key.
+    report = _run(FIXTURES / "grpc_server")
+    for ep in report["endpoints"]:
+        if ep["protocol"] == "gRPC":
+            assert "contract_hint" not in ep
+
+
 def test_scan_grpc_server_finds_registered_services():
     report = _run(FIXTURES / "grpc_server")
     grpc = sorted(
