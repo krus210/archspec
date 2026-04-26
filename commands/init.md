@@ -1,5 +1,5 @@
 ---
-description: Bootstrap a service for archspec — create SERVICE_MAP.yaml, ARCHITECTURE.md, ADR dir, install pre-commit hook, append archspec block to CLAUDE.md.
+description: Bootstrap a service for archspec — auto-discover endpoints/dependencies/storage/topics from Go code, ask the user for SLA/idempotency/timeout fields, then create SERVICE_MAP.yaml, ARCHITECTURE.md, ADR dir, install pre-commit hook, append archspec block to CLAUDE.md.
 ---
 
 # /archspec:init
