@@ -81,7 +81,18 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    cp ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/schema/servicemap.schema.json .servicemap/schema.json
    ```
 
-3. Replace placeholders. Ask the user for: service name, team, language, repo URL, domain. Replace `REPLACE-WITH-DATE` with today's ISO date (asked from the user — do **not** read the system clock).
+3. Replace placeholders. Ask the user via `AskUserQuestion` (single batch) for: service name, team, language, repo URL, domain, primary owner handle (e.g. `@alice`), oncall handle. Replace `REPLACE-WITH-DATE` with today's ISO date (asked from the user — do **not** read the system clock).
+
+3a0. **Service-level questionnaire** — fill `service.responsibilities` and `service.invariants` BEFORE running the auto-discovery scanner. These are the two most important free-form fields in the contract; leaving them as `TODO` makes the generated `ARCHITECTURE.md` near-useless.
+
+   Use `AskUserQuestion` with two free-text questions, both required:
+
+   - `responsibilities` — "List 3–5 things this service is responsible for, one per line. Each line should start with a verb (e.g. 'serve geo lookup queries', 'cache postal-code data')."
+   - `invariants` — "List 1–5 invariants this service must uphold, one per line. Examples: 'every write goes through the outbox', 'all endpoints are idempotent', 'no PII leaves this service'."
+
+   Split each answer on newlines and write the resulting list into the YAML. If the user explicitly says "skip" or returns empty input, leave the existing `TODO` placeholder and tell them: "I left these as TODO — please fill them in before running `/archspec:sync`."
+
+   Also ask in the same batch (or a follow-up if the AskUserQuestion plugin caps at N questions): `bounded_aggregate` (default = service name), and the `consistency.model` (`eventual` or `strong`, default `eventual`).
 
 3a. **Auto-discover from code** (Go services only — skip if `service.language != go`).
 
@@ -95,12 +106,14 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
    ```
    { service_dir, files_scanned,
-     endpoints:        [{kind, protocol, method, path|name, source, confidence}, ...],
+     endpoints:        [{kind, protocol, method, path|name, source, confidence, contract_hint?}, ...],
      downstream_sync:  [{kind, protocol, service, address_arg, source, confidence}, ...],
      storage:          [{kind, type, source, confidence}, ...],
      events_published: [{kind, backend, topic, source, confidence}, ...],
      events_consumed:  [{kind, backend, topic, source, confidence}, ...] }
    ```
+
+   `contract_hint` is set on gRPC endpoints when the scanner finds a matching `proto/<domain>/v1/*.proto` file in the service directory or any parent up to 5 levels — use it as the default `contract` value in the questionnaire.
 
    `backend` is `"kafka"` or `"nats"` today. Other messaging stacks (RabbitMQ, GCP Pub/Sub, etc.) yield no events — fall back to asking the user explicitly in step 3b.
 
@@ -122,9 +135,9 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
    - `idempotency.required` — boolean (`Yes` / `No`).
    - If `required: true`: `key_source` (free text, default `"header: X-Idempotency-Key"`), `storage` (default `"redis: idemp:{key}"`).
-   - `sla.p99_latency` (default `"TODO"`).
-   - `sla.availability` (default `"TODO"`).
-   - `contract` (free text, default `"TODO"`).
+   - `sla.p99_latency` (default `"100ms"` for in-memory reads, `"500ms"` otherwise — propose, don't blindly fill).
+   - `sla.availability` (default `"99.9%"` — propose).
+   - `contract` (free text). If the scan finding includes `contract_hint`, **propose that path as the default** — e.g. for a gRPC server `RegisterGeoServiceServer` in a monorepo with `proto/geo/v1/geo.proto`, the scanner returns `contract_hint: "proto/geo/v1/geo.proto"`. Otherwise default to `"TODO"`.
 
    For each `downstream_sync` finding, ask in one `AskUserQuestion` batch:
 
@@ -154,6 +167,12 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    > "Are there architectural artefacts the scanner missed? In particular: (a) additional storage, (b) undetected endpoints, (c) async events using a backend other than Kafka or NATS (e.g. RabbitMQ, Pub/Sub, in-house queue), (d) events that use runtime-resolved subjects the scanner cannot follow."
 
    If yes, prompt the user to enumerate them and add each manually with the same field set as above.
+
+3c0. **Decide `consistency.write_path.pattern`** based on findings (read-only-service heuristic):
+
+   - If the user accepted **zero** `events_published`, accepted **zero** mutating endpoints, and the only confirmed storage entries are read-only (e.g. `in-memory`, replicated cache), default `consistency.write_path.pattern` to `direct` (the service is read-only — outbox is meaningless).
+   - "Mutating endpoint" = name does NOT start with `Get`, `List`, `Find`, `Read`, `Search`, `Has`, `Is`, `Count`, `Lookup`, `Query`, or `Fetch`.
+   - Otherwise (any mutating endpoint OR any published event), keep the seed default `outbox` BUT confirm with the user via a single `AskUserQuestion`: "Choose the write-path pattern: `outbox` (recommended for services that publish events), `direct` (synchronous writes, no event publishing), `saga` (multi-step distributed transactions)."
 
 3c. **Write the confirmed findings to `docs/SERVICE_MAP.yaml`** using the `Edit` tool. Build each YAML block from the confirmed answers; do not write rejected items. Schema fields and defaults:
 

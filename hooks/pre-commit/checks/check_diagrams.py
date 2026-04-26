@@ -21,12 +21,15 @@ def _staged_yaml(staged: list[str]) -> str | None:
 
 
 def _staged_diagrams(staged: list[str]) -> list[str]:
-    # Skip archspec's own test fixtures — they are golden references, not generated artefacts.
+    # Skip archspec's own test fixtures and example fixtures — they are
+    # golden/reference artefacts maintained by archspec contributors, not
+    # user-facing generated outputs subject to DET-005.
+    skip_prefixes = ("tests/golden/", "examples/")
     return [
         s for s in staged
         if s.endswith(".mmd")
         and Path(s).name in _DIAGRAM_FILES
-        and not s.startswith("tests/golden/")
+        and not any(s.startswith(p) for p in skip_prefixes)
     ]
 
 
