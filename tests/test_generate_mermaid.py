@@ -74,3 +74,43 @@ def test_sequence_handles_mixed_endpoints():
     out = generate_sequence(doc)
     assert out.count("svc->>store: read") == 1
     assert out.count("svc->>store: write") == 1
+
+
+def _doc_with_upstream(upstream: list) -> dict:
+    return {
+        "service": {"name": "geo-service"},
+        "api": {"endpoints": []},
+        "dependencies": {
+            "upstream": upstream,
+            "downstream": {"sync": [], "async": []},
+            "storage": [],
+        },
+        "events": {"published": [], "consumed": []},
+    }
+
+
+def test_container_renders_legacy_string_upstream():
+    out = generate_container(_doc_with_upstream(["api-gateway"]))
+    assert "up_api-gateway[api-gateway] --> svc" in out
+
+
+def test_container_renders_structured_upstream_with_method_labels():
+    upstream = [{
+        "name": "matching-service",
+        "protocol": "gRPC",
+        "endpoints_used": ["GetDistance", "GetCity"],
+        "discovered_via": "monorepo-scan",
+    }]
+    out = generate_container(_doc_with_upstream(upstream))
+    assert (
+        "up_matching-service[matching-service] -->|GetDistance, GetCity| svc"
+        in out
+    )
+
+
+def test_container_omits_endpoint_boxes():
+    """Endpoints (gRPC GetCity etc.) must not appear as boxes anymore."""
+    doc = _doc_with_endpoints(["GetCity", "CreateTask"])
+    out = generate_container(doc)
+    assert "gRPC GetCity" not in out
+    assert "ep_getcity" not in out

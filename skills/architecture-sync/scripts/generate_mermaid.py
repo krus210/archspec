@@ -23,13 +23,23 @@ def _is_read_endpoint(name: str) -> bool:
     return any(name.startswith(p) for p in READ_PREFIXES)
 
 
+def _normalize_upstream(item) -> dict:
+    """Accept either a legacy string or a structured object form."""
+    if isinstance(item, str):
+        return {"name": item, "slug": slugify(item), "endpoints_used": []}
+    obj = dict(item)
+    obj.setdefault("endpoints_used", [])
+    obj["slug"] = slugify(obj["name"])
+    return obj
+
+
 def _enrich(doc: dict) -> dict:
     deps = doc.get("dependencies", {})
     events = doc.get("events", {})
     raw_endpoints = doc.get("api", {}).get("endpoints", [])
     return {
         "service": doc["service"],
-        "upstream": [{"name": u, "slug": slugify(u)} for u in deps.get("upstream", [])],
+        "upstream": [_normalize_upstream(u) for u in deps.get("upstream", [])],
         "downstream_sync": [
             {**d, "slug": slugify(d["service"])} for d in deps.get("downstream", {}).get("sync", [])
         ],

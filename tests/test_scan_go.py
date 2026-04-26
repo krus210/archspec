@@ -120,6 +120,64 @@ def test_scan_grpc_server_finds_registered_services():
             assert ep["confidence"] == "high"
 
 
+def _run_reverse(repo_root: Path, target: str) -> dict:
+    r = subprocess.run(
+        [sys.executable, str(SCAN), "--reverse-scan", str(repo_root), "--target", target],
+        capture_output=True, text=True, cwd=ROOT, check=False,
+    )
+    assert r.returncode == 0, f"reverse scan failed: {r.stderr}"
+    return json.loads(r.stdout)
+
+
+def test_reverse_scan_finds_consumer_services():
+    report = _run_reverse(FIXTURES / "reverse_scan", "geo-service")
+    names = sorted(c["name"] for c in report["consumers"])
+    assert names == ["api-gateway", "matching-service"]
+
+
+def test_reverse_scan_extracts_method_names():
+    report = _run_reverse(FIXTURES / "reverse_scan", "geo-service")
+    by_name = {c["name"]: c for c in report["consumers"]}
+    assert by_name["api-gateway"]["endpoints_used"] == ["GetCity", "GetDistance"]
+    assert by_name["matching-service"]["endpoints_used"] == ["GetDistance"]
+    for c in report["consumers"]:
+        assert c["protocol"] == "gRPC"
+        assert c["confidence"] == "high"
+        assert c["discovered_via"] == "monorepo-scan"
+        assert c["source"].endswith(".go:6")
+
+
+def test_reverse_scan_excludes_target_service_itself():
+    report = _run_reverse(FIXTURES / "reverse_scan", "geo-service")
+    names = {c["name"] for c in report["consumers"]}
+    assert "geo-service" not in names
+
+
+def test_reverse_scan_returns_empty_for_unused_target():
+    report = _run_reverse(FIXTURES / "reverse_scan", "billing-service")
+    assert report["consumers"] == []
+    assert report["target"] == "billing-service"
+
+
+def test_reverse_scan_requires_target_argument():
+    r = subprocess.run(
+        [sys.executable, str(SCAN), "--reverse-scan", str(FIXTURES / "reverse_scan")],
+        capture_output=True, text=True, cwd=ROOT, check=False,
+    )
+    assert r.returncode == 2
+    assert "--target" in r.stderr
+
+
+def test_reverse_scan_rejects_missing_repo_dir():
+    r = subprocess.run(
+        [sys.executable, str(SCAN), "--reverse-scan", str(FIXTURES / "does-not-exist"),
+         "--target", "geo-service"],
+        capture_output=True, text=True, cwd=ROOT, check=False,
+    )
+    assert r.returncode == 2
+    assert "not a directory" in r.stderr.lower()
+
+
 def test_scan_http_routes_finds_all_routers():
     report = _run(FIXTURES / "http_routes")
     paths = sorted(

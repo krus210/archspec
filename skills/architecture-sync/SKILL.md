@@ -168,6 +168,38 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
    If yes, prompt the user to enumerate them and add each manually with the same field set as above.
 
+3b-rev. **Discover upstream consumers** (who calls this service).
+
+   Ask the user in a single `AskUserQuestion`:
+
+   > "Is this service part of a monorepo I can scan to discover upstream consumers? If yes, paste the absolute path to the monorepo root (the directory containing `services/`, `cmd/`, or `apps/`). If no, answer `none` and I'll ask you to list consumers manually."
+
+   - **Path provided** — run the reverse scanner:
+
+     ```bash
+     ${CLAUDE_PROJECT_DIR}/bin/archspec-python \
+       ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/scan_go.py \
+       --reverse-scan <monorepo-root> --target <service.name> > /tmp/archspec-reverse.json
+     ```
+
+     Read `/tmp/archspec-reverse.json`. Schema:
+
+     ```
+     { repo_root, target, files_scanned,
+       consumers: [{name, protocol, endpoints_used: [...], source, confidence,
+                    discovered_via: "monorepo-scan"}, ...] }
+     ```
+
+     The scanner detects gRPC consumers by matching imports of `<...>/<domain>/v1` and method-request literals like `<alias>.<Method>Request{`. HTTP-only consumers are NOT auto-detected and must be added manually.
+
+     For each consumer, ask the user one `AskUserQuestion` to confirm/skip and write each accepted entry to `dependencies.upstream[]` as a structured object. **Do not** drop the `endpoints_used` array — it is what enables circular-dependency analysis later.
+
+   - **`none` (not a monorepo, or repo not on disk)** — fall back to a manual `AskUserQuestion`:
+
+     > "Which other services call this one? List them comma-separated, e.g. `api-gateway, matching-service`. If you don't know yet, answer `unknown` and I'll write a TODO."
+
+     For each name, write `{name, discovered_via: "manual"}` to `dependencies.upstream[]`. If the user answered `unknown`, write a single placeholder `{name: "TODO-list-consumers", discovered_via: "k8s-todo"}` so a future iteration can replace it (planned: derive consumers from k8s `Service` + `NetworkPolicy` resources or service-mesh telemetry).
+
 3c0. **Decide `consistency.write_path.pattern`** based on findings (read-only-service heuristic):
 
    - If the user accepted **zero** `events_published`, accepted **zero** mutating endpoints, and the only confirmed storage entries are read-only (e.g. `in-memory`, replicated cache), default `consistency.write_path.pattern` to `direct` (the service is read-only — outbox is meaningless).
@@ -190,6 +222,16 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
          p99_latency: <user-provided or "TODO">
          availability: <user-provided or "TODO">
      ```
+   - `dependencies.upstream[]` (structured form, preferred — produced by step 3b-rev):
+     ```yaml
+     - name: <consumer-service>
+       protocol: gRPC|HTTP    # optional, set when known
+       endpoints_used:        # optional, set by reverse-scan
+         - <method-name>
+       discovered_via: monorepo-scan|manual|k8s-todo
+     ```
+     A bare string entry (`- api-gateway`) is still accepted for backwards compatibility but provides no information for circular-dependency analysis.
+
    - `dependencies.downstream.sync[]`:
      ```yaml
      - service: <scanner-derived>
