@@ -108,6 +108,62 @@ def test_container_renders_structured_upstream_with_method_labels():
     )
 
 
+def test_sequence_does_not_smoosh_storage_and_response_lines():
+    """Regression test for v0.4.0: trim_blocks ate the newline after `{% endif %}`,
+    causing `svc->>store: write` and `svc-->>client: response` to render on the same line.
+    """
+    doc = _doc_with_endpoints(["CreateTask", "GetTask"])
+    out = generate_sequence(doc)
+    assert "svc->>store: write  svc-->>client" not in out
+    assert "svc->>store: read  svc-->>client" not in out
+    assert "svc->>store: write\n  svc-->>client: response" in out
+    assert "svc->>store: read\n  svc-->>client: response" in out
+
+
+def _doc_with_published(endpoint_names: list[str], published: list[dict]) -> dict:
+    return {
+        "service": {"name": "task-service"},
+        "api": {
+            "endpoints": [
+                {
+                    "name": n,
+                    "protocol": "gRPC",
+                    "idempotency": {"required": False},
+                    "contract": "TODO",
+                    "sla": {"p99_latency": "TODO", "availability": "TODO"},
+                }
+                for n in endpoint_names
+            ],
+        },
+        "dependencies": {
+            "upstream": [],
+            "downstream": {"sync": [], "async": []},
+            "storage": [{"type": "in-memory", "name": "store", "owned_by": "this service"}],
+        },
+        "events": {"published": published, "consumed": []},
+    }
+
+
+def test_sequence_emits_publish_edge_for_write_endpoints():
+    doc = _doc_with_published(
+        ["CreateTask", "GetTask"],
+        [{"topic": "task.created", "contract": "TODO", "version": 1}],
+    )
+    out = generate_sequence(doc)
+    # Participant must be declared once.
+    assert out.count("participant events as message-bus") == 1
+    # Publish line must appear under CreateTask (write) but NOT under GetTask (read).
+    assert "svc->>events: publish task.created (v1)" in out
+    assert out.count("svc->>events: publish") == 1
+
+
+def test_sequence_omits_message_bus_when_no_published_events():
+    doc = _doc_with_published(["CreateTask"], [])
+    out = generate_sequence(doc)
+    assert "message-bus" not in out
+    assert "publish" not in out
+
+
 def test_container_omits_endpoint_boxes():
     """Endpoints (gRPC GetCity etc.) must not appear as boxes anymore."""
     doc = _doc_with_endpoints(["GetCity", "CreateTask"])

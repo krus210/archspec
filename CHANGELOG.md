@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-04-27
+
+### Fixed
+- **Sequence diagram line collision** (regression introduced in v0.3.0): the inline `{% if ep.is_read %}read{% else %}write{% endif %}` in `sequence.mmd.j2` interacted with Jinja's `trim_blocks=True` and ate the newline after `{% endif %}`, causing `svc->>store: write` and `svc-->>client: response` to render on the same line. Fix: read/write decision is now precomputed in `_enrich()` as a `storage_op` field; the template uses a plain variable. Regression test added.
+
+### Added
+- **Sequence diagram now visualises NATS publish for outbox-pattern services**: write endpoints (anything not prefixed with the read-verb list) now emit `svc->>events: publish <topic> (v<N>)` for each entry in `events.published`, after the storage write. A `participant events as message-bus` is declared when `published` is non-empty. This makes it visible *why* a service is marked `consistency.write_path: outbox` and which event is emitted in the same transaction.
+
 ## [0.4.0] - 2026-04-26
 
 ### Added

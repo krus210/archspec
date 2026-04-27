@@ -9,6 +9,9 @@ sequenceDiagram
 {% for s in storage | sort(attribute="name") %}
   participant {{ s.slug }} as {{ s.type }}:{{ s.name }}
 {% endfor %}
+{% if published %}
+  participant events as message-bus
+{% endif %}
 {% for ep in endpoints | sort(attribute="name") %}
   client->>svc: {{ ep.protocol }} {{ ep.name }}
   {% if ep.idempotency.required %}
@@ -19,7 +22,12 @@ sequenceDiagram
   {{ d.slug }}-->>svc: response
   {% endfor %}
   {% for s in storage | sort(attribute="name") %}
-  svc->>{{ s.slug }}: {% if ep.is_read %}read{% else %}write{% endif %}
+  svc->>{{ s.slug }}: {{ ep.storage_op }}
   {% endfor %}
+  {% if not ep.is_read %}
+  {% for t in published | sort(attribute="topic") %}
+  svc->>events: publish {{ t.topic }} (v{{ t.version }})
+  {% endfor %}
+  {% endif %}
   svc-->>client: response
 {% endfor %}
