@@ -66,22 +66,13 @@ either breaks `pytest` or makes `/plugin update` no-op silently.
    gh release create vX.Y.Z --title "vX.Y.Z — title" --notes "..."
    ```
 
-5. **Note on `marketplace.json` `source.ref`**: it is pinned to `main`
-   intentionally — it forces Claude Code's `/plugin update` to re-clone the
-   repository on every version bump. Do *not* change it to a specific tag
-   unless you also automate updating it on every release; otherwise users will
-   keep getting the version the ref was last pointed at.
-
-If `/plugin update archspec` still does not pick up the new version on a user's
-machine (a known Claude Code installer quirk where `installed_plugins.json` is
-updated but files are not copied), they can work around it with:
-
-```bash
-cp -R ~/.claude/plugins/marketplaces/archspec \
-      ~/.claude/plugins/cache/archspec/archspec/X.Y.Z
-```
-
-…and restart Claude Code.
+5. **Note on `marketplace.json` `source`**: it is set to the relative path
+   `"./"` (marketplace and plugin live in the same repo). Do *not* change it
+   to the github-object form `{"source": "github", "repo": ...}` — Claude Code's
+   installer hits a code path with that form where it updates
+   `installed_plugins.json` with the new version but skips the actual file
+   fetch, leaving users with an empty install path. See CHANGELOG v0.4.3 for
+   the full story.
 
 ## Adding a language linter
 

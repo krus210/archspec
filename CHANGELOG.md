@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-04-27
+
+### Fixed
+- **`/plugin update` now actually copies files into the install path.** Switched `marketplace.json` `source` from the github-object form (`{"source": "github", "repo": "krus210/archspec", "ref": "main"}`) to the relative-path form (`"./"`), matching the convention used by other single-repo plugins like [obra/superpowers](https://github.com/obra/superpowers). With the github-object form, Claude Code's installer was hitting a code path where it would update `installed_plugins.json` with the new version but skip the actual clone-and-copy step — users had to manually `cp -R ~/.claude/plugins/marketplaces/archspec ~/.claude/plugins/cache/archspec/archspec/<version>/`. With the relative path the installer copies directly from the marketplace clone into the install path with no second GitHub fetch. The `"."` form (without trailing slash) was tried in v0.1.1 and rejected by schema validation; `"./"` is accepted.
+
+### Changed
+- `plugin.json` now matches the convention of established Claude Code plugins: added `author`, `homepage`, and `keywords` fields. Functionally equivalent — discoverability only.
+- `CONTRIBUTING.md`: dropped the `ref: main` note (it was a workaround that did not help) and the `cp -R` workaround instructions (they should not be needed once the relative-path source takes effect).
+
 ## [0.4.2] - 2026-04-27
 
 ### Fixed
