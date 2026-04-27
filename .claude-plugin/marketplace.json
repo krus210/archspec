@@ -6,10 +6,11 @@
       "name": "archspec",
       "source": {
         "source": "github",
-        "repo": "krus210/archspec"
+        "repo": "krus210/archspec",
+        "ref": "main"
       },
       "description": "Spec-driven architecture validation for microservices",
-      "version": "0.4.1"
+      "version": "0.4.2"
     }
   ]
 }
