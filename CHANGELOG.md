@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-04-27
+
+### Fixed
+- Pin marketplace `source.ref` to `main` so Claude Code's `/plugin update` reliably re-clones the repository on every release. Previously, without an explicit `ref`, the installer wrote a new version into `installed_plugins.json` but skipped the actual file fetch, leaving the install path empty and forcing users to copy files manually from `~/.claude/plugins/marketplaces/archspec/` to `~/.claude/plugins/cache/archspec/archspec/<version>/`.
+
 ## [0.4.1] - 2026-04-27
 
 ### Fixed
