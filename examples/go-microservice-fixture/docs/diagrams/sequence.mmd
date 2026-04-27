@@ -4,6 +4,9 @@ sequenceDiagram
   participant client as Client
   participant svc as listings-svc
   participant listings-db as postgres:listings_db
+  participant events as message-bus
   client->>svc: HTTP CreateListing
   Note over svc: read X-Idempotency-Key
-  svc->>listings-db: write  svc-->>client: response
+  svc->>listings-db: write
+  svc->>events: publish listings.changed.v1 (v1)
+  svc-->>client: response

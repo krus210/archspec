@@ -49,7 +49,14 @@ def _enrich(doc: dict) -> dict:
         "storage": [{**s, "slug": slugify(s["name"])} for s in deps.get("storage", [])],
         "published": [{**t, "slug": slugify(t["topic"])} for t in events.get("published", [])],
         "consumed": [{**t, "slug": slugify(t["topic"])} for t in events.get("consumed", [])],
-        "endpoints": [{**e, "is_read": _is_read_endpoint(e["name"])} for e in raw_endpoints],
+        "endpoints": [
+            {
+                **e,
+                "is_read": _is_read_endpoint(e["name"]),
+                "storage_op": "read" if _is_read_endpoint(e["name"]) else "write",
+            }
+            for e in raw_endpoints
+        ],
     }
 
 
