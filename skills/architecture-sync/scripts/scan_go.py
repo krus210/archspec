@@ -32,6 +32,17 @@ from pathlib import Path
 
 EXCLUDE_DIRS = {"vendor", "gen", ".git", "node_modules", "testdata"}
 
+# Directory names that the aggregate detector considers "in scope". A Mutex
+# living outside these directories (e.g. in usecase/, handler/, cmd/) is not
+# evidence of a domain aggregate.
+_AGGREGATE_SCOPE_DIRS = {"repository", "repo", "domain", "infra"}
+
+# Method-name suffixes that indicate compare-and-set / atomic write semantics.
+_CAS_METHOD_SUFFIXES = ("WithEvent", "IfAbsent", "CAS")
+
+# Receiver-type suffixes to strip when deriving an aggregate name.
+_REPO_TYPE_SUFFIXES = ("Repository", "MemoryRepo", "Repo", "Store")
+
 _HTTP_VERB_METHODS = ("Get", "Post", "Put", "Patch", "Delete", "Head", "Options")
 
 _HTTP_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -400,6 +411,82 @@ def _scan_http_endpoints(file: Path, root: Path) -> list[dict]:
     return out
 
 
+_CAS_FUNC_PATTERN = re.compile(
+    r'\bfunc\s+\(\s*\w+\s+\*?(\w+)\s*\)\s+(\w+)\s*\('
+)
+_MUTEX_PATTERN = re.compile(r'\bsync\.(?:RW)?Mutex\b')
+_REPO_STRUCT_PATTERN = re.compile(r'\btype\s+(\w+)\s+struct\b')
+
+
+def _strip_repo_suffix(name: str) -> str:
+    for suf in _REPO_TYPE_SUFFIXES:
+        if name.endswith(suf) and len(name) > len(suf):
+            return name[: -len(suf)]
+    return name
+
+
+def _aggregate_in_scope(rel: Path) -> bool:
+    return any(part in _AGGREGATE_SCOPE_DIRS for part in rel.parts[:-1])
+
+
+def _scan_aggregates(file: Path, root: Path) -> list[dict]:
+    """Detect domain aggregates from Go repository code.
+
+    Heuristics:
+      * func with name suffix WithEvent / IfAbsent / CAS → optimistic strategy
+        (compare-and-set semantics).
+      * sync.Mutex / sync.RWMutex inside a `type *Repo struct` → pessimistic.
+
+    Only files under repository/ / repo/ / domain/ / infra/ are scanned —
+    Mutex in cmd/ or usecase/ is not aggregate evidence.
+    """
+    rel = file.relative_to(root)
+    if not _aggregate_in_scope(rel):
+        return []
+    text = file.read_text(encoding="utf-8", errors="replace")
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for m in _CAS_FUNC_PATTERN.finditer(text):
+        receiver, method = m.group(1), m.group(2)
+        if not any(method.endswith(suf) for suf in _CAS_METHOD_SUFFIXES):
+            continue
+        name = _strip_repo_suffix(receiver)
+        key = (name, "optimistic")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "kind": "aggregate",
+                "name": name,
+                "write_strategy": "optimistic",
+                "source": f"{rel}:{_line_of(text, m.start())}",
+                "confidence": "high",
+            }
+        )
+    if _MUTEX_PATTERN.search(text):
+        struct_match = _REPO_STRUCT_PATTERN.search(text)
+        if struct_match:
+            name = _strip_repo_suffix(struct_match.group(1))
+        else:
+            name = file.stem.split("_")[0].rstrip("s").capitalize() or "Aggregate"
+        key = (name, "pessimistic")
+        if key not in seen and not any(s == name for s, _ in seen):
+            seen.add(key)
+            mutex_match = _MUTEX_PATTERN.search(text)
+            line = _line_of(text, mutex_match.start()) if mutex_match else 1
+            out.append(
+                {
+                    "kind": "aggregate",
+                    "name": name,
+                    "write_strategy": "pessimistic",
+                    "source": f"{rel}:{line}",
+                    "confidence": "medium",
+                }
+            )
+    return out
+
+
 def _iter_go_files(root: Path) -> list[Path]:
     out: list[Path] = []
     for p in sorted(root.rglob("*.go")):
@@ -419,6 +506,7 @@ def scan(service_dir: Path) -> dict:
     storage: list[dict] = []
     pub: list[dict] = []
     con: list[dict] = []
+    aggregates: list[dict] = []
     for f in files:
         endpoints.extend(_scan_http_endpoints(f, service_dir))
         endpoints.extend(_scan_grpc_endpoints(f, service_dir))
@@ -427,11 +515,13 @@ def scan(service_dir: Path) -> dict:
         p, c = _scan_events(f, service_dir)
         pub.extend(p)
         con.extend(c)
+        aggregates.extend(_scan_aggregates(f, service_dir))
     endpoints.sort(key=lambda e: (e["protocol"], e["method"], e.get("path", ""), e["source"]))
     downstream.sort(key=lambda d: (d["service"], d["source"]))
     storage.sort(key=lambda s: (s["type"], s["source"]))
     pub.sort(key=lambda e: (e["backend"], e["topic"], e["source"]))
     con.sort(key=lambda e: (e["backend"], e["topic"], e["source"]))
+    aggregates = _dedupe_aggregates(aggregates)
     return {
         "service_dir": str(service_dir),
         "files_scanned": len(files),
@@ -440,7 +530,20 @@ def scan(service_dir: Path) -> dict:
         "storage": storage,
         "events_published": pub,
         "events_consumed": con,
+        "aggregates": aggregates,
     }
+
+
+def _dedupe_aggregates(aggregates: list[dict]) -> list[dict]:
+    """Collapse duplicate aggregate findings: keep the highest-confidence entry per name."""
+    by_name: dict[str, dict] = {}
+    rank = {"high": 2, "medium": 1, "low": 0}
+    for agg in aggregates:
+        name = agg["name"]
+        existing = by_name.get(name)
+        if existing is None or rank[agg["confidence"]] > rank[existing["confidence"]]:
+            by_name[name] = agg
+    return sorted(by_name.values(), key=lambda a: (a["name"], a["source"]))
 
 
 _SERVICE_NAME_SUFFIXES = ("-service", "_service")

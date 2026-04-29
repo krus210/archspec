@@ -81,6 +81,13 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    cp ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/schema/servicemap.schema.json .servicemap/schema.json
    ```
 
+2a. **Top-level architecture spec ingest (opt-in).** Ask the user via `AskUserQuestion`:
+
+   > "Path to a top-level architecture spec for this monorepo (e.g. `docs/project/architecture.md`, `docs/architecture.md`)? If none — answer `skip` and we'll proceed without cross-checking."
+
+   - **Path provided** — Read the file with the `Read` tool and keep its contents as **conversation context only** (do not parse). Then, before each subsequent confirm prompt, briefly recite what the spec says about *this* service (e.g. "top-level spec lists `matching-service → geo-service` for distance computation; confirm?"). Print one reminder to the user once at the start: "Top-level spec may be stale — if anything contradicts the actual code, answer based on code, not spec." The spec is a hint, never an override.
+   - **`skip` / no path** — proceed with no cross-check; per-service init runs as before.
+
 3. Replace placeholders. Ask the user via `AskUserQuestion` (single batch) for: service name, team, language, repo URL, domain, primary owner handle (e.g. `@alice`), oncall handle. Replace `REPLACE-WITH-DATE` with today's ISO date (asked from the user — do **not** read the system clock).
 
 3a0. **Service-level questionnaire** — fill `service.responsibilities` and `service.invariants` BEFORE running the auto-discovery scanner. These are the two most important free-form fields in the contract; leaving them as `TODO` makes the generated `ARCHITECTURE.md` near-useless.
@@ -133,8 +140,11 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
    For each accepted endpoint, ask a follow-up batch (single `AskUserQuestion` call with multiple questions):
 
-   - `idempotency.required` — boolean (`Yes` / `No`).
-   - If `required: true`: `key_source` (free text, default `"header: X-Idempotency-Key"`), `storage` (default `"redis: idemp:{key}"`).
+   - `idempotency.required` — boolean (`Yes` / `No`). **Propose** a default based on the endpoint name:
+     - If the name starts with one of the read prefixes (`Get`, `List`, `Find`, `Read`, `Search`, `Has`, `Is`, `Count`, `Lookup`, `Query`, `Fetch`) → default `No` (idempotency is implicit).
+     - Otherwise (writes like `Create*`, `Update*`, `Delete*`, `Send*`, `Verify*`, `Assign*`, `Submit*`, `Process*`, `Schedule*`, `Confirm*`, `Reject*`, `Cancel*`, `Set*`, `Add*`, `Remove*`) → default `Yes`. The shared list lives in `_common.READ_PREFIXES`.
+     - On `No` for a write endpoint, just record `required: false` — no nag, no BLOCK.
+   - If `required: Yes`: `key_source` (default `"header: X-Idempotency-Key"` for HTTP, `"metadata: x-idempotency-key"` for gRPC), `storage` (default `"redis: idemp:{key}"`; user may type free text such as `"in-memory dedup store"` for non-redis mechanisms like a CAS repository or a per-process map).
    - `sla.p99_latency` (default `"100ms"` for in-memory reads, `"500ms"` otherwise — propose, don't blindly fill).
    - `sla.availability` (default `"99.9%"` — propose).
    - `contract` (free text). If the scan finding includes `contract_hint`, **propose that path as the default** — e.g. for a gRPC server `RegisterGeoServiceServer` in a monorepo with `proto/geo/v1/geo.proto`, the scanner returns `contract_hint: "proto/geo/v1/geo.proto"`. Otherwise default to `"TODO"`.
@@ -199,6 +209,12 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
      > "Which other services call this one? List them comma-separated, e.g. `api-gateway, matching-service`. If you don't know yet, answer `unknown` and I'll write a TODO."
 
      For each name, write `{name, discovered_via: "manual"}` to `dependencies.upstream[]`. If the user answered `unknown`, write a single placeholder `{name: "TODO-list-consumers", discovered_via: "k8s-todo"}` so a future iteration can replace it (planned: derive consumers from k8s `Service` + `NetworkPolicy` resources or service-mesh telemetry).
+
+3b-agg. **Confirm detected aggregates** (Go scanner only). After the JSON report is read, iterate over `aggregates` and ask the user one `AskUserQuestion` per finding:
+
+   > "Detected aggregate '<name>' (write_strategy=<optimistic|pessimistic>) at <file:line>. Confirm / rename / skip"
+
+   Write each accepted entry to `concurrency.aggregates[]` as `{name, write_strategy}`. Skip entries are silently dropped. If the scanner found no aggregates **and** any mutating endpoint was confirmed in 3b, ask one trailing question: "What is the main aggregate of this service (free text, or `skip` to leave empty)?". Otherwise (read-only service) leave `aggregates: []`.
 
 3c0. **Decide `consistency.write_path.pattern`** based on findings (read-only-service heuristic):
 
@@ -265,7 +281,13 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/validate_servicemap.py docs/SERVICE_MAP.yaml
    ```
 
-   Exit 0 = continue to step 4. Non-zero = surface the diagnostic and ask the user to amend.
+   Exit 0 = continue. Exit 0 with `WARN DET-006` lines on stderr = TODO placeholders survive in optional fields; that's fine for a draft. Exit 1 = schema error or strict-mode TODO violation — surface the diagnostic and ask the user to amend.
+
+3d. **Cross-service invariants prompt (skippable).** Only when the service has confirmed `events.published`, `events.consumed`, or `consistency.write_path.pattern` in `{outbox, saga}`. Ask one `AskUserQuestion`:
+
+   > "List 1–3 cross-service invariants (one per line), or type `skip` to leave empty. Examples: 'every <event-A> eventually triggers exactly one <event-B> or <event-C>'; 'duplicate <event-A> processing is prevented via CAS on <key>'; 'consumer must be idempotent on <field>'."
+
+   Skip / empty answer → write `cross_service_invariants: []` and print one info line: "left empty — fill in later when invariants stabilise". No retry, no BLOCK. Otherwise split lines and write to `consistency.cross_service_invariants[]`.
 
 4. Render diagrams + ARCHITECTURE.md (delegate to the main "Procedure" section, steps 2–5).
 
@@ -297,3 +319,30 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 ### Re-init idempotency
 
 If `/archspec:init` is invoked again, skip every step that would modify a file with archspec markers. Refresh only the managed regions and the schema copy. Never overwrite user-authored content.
+
+## Check architecture (used by /archspec:check-architecture)
+
+Read-only audit of an entire monorepo. Walks every `**/SERVICE_MAP.yaml` reachable from the repo root and reports cross-spec mismatches.
+
+1. Confirm `repo_root`. Default = current working directory.
+
+2. Run the audit script:
+
+   ```bash
+   ${CLAUDE_PROJECT_DIR}/bin/archspec-python \
+     ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/check_architecture.py \
+     <repo-root> [--issues-only|--full]
+   ```
+
+   Flags:
+   - `--issues-only` — silent output when no issues; exit 0.
+   - `--full` — include the per-service summary table (downstream / declared upstream / computed upstream / pubs / subs).
+
+3. Surface the markdown report verbatim. The report flags:
+   - **DET-006** — `TODO` literals in required-concrete fields.
+   - **DEP-001** — write_path × events inconsistency (outbox without events, or direct with events).
+   - **DEP-002** — service A calls B but B does not list A as upstream.
+   - **DEP-003** — published topic with no consumer in the monorepo.
+   - **DEP-004** — declared upstream not reflected in the claimed caller's spec.
+
+4. Suggest follow-ups based on the report. Do **not** rewrite any SERVICE_MAP.yaml automatically — it is the user's call which findings to address.

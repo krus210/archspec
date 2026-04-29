@@ -8,13 +8,19 @@ def test_plugin_manifest_loads_and_has_required_fields():
     manifest_path = ROOT / ".claude-plugin" / "plugin.json"
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["name"] == "archspec"
-    assert data["version"] == "0.4.3"
+    assert data["version"] == "0.5.0"
     assert "description" in data
 
 
 def test_commands_directory_has_all_expected_files():
     cmd_dir = ROOT / "commands"
-    expected = {"init.md", "sync.md", "validate.md", "investigate.md"}
+    expected = {
+        "init.md",
+        "sync.md",
+        "validate.md",
+        "investigate.md",
+        "check-architecture.md",
+    }
     assert {p.name for p in cmd_dir.glob("*.md")} == expected
 
 
