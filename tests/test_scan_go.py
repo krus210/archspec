@@ -29,6 +29,32 @@ def test_scan_empty_directory_returns_all_keys_empty():
     assert report["storage"] == []
     assert report["events_published"] == []
     assert report["events_consumed"] == []
+    assert report["aggregates"] == []
+
+
+def test_scan_aggregates_detects_optimistic_via_cas_methods():
+    report = _run(FIXTURES / "aggregates")
+    by_name = {a["name"]: a for a in report["aggregates"]}
+    assert "Task" in by_name
+    assert by_name["Task"]["write_strategy"] == "optimistic"
+    assert by_name["Task"]["confidence"] == "high"
+    assert "Match" in by_name
+    assert by_name["Match"]["write_strategy"] == "optimistic"
+
+
+def test_scan_aggregates_ignores_mutex_outside_repository_scope():
+    """A Mutex in usecase/ must not produce an aggregate finding."""
+    report = _run(FIXTURES / "aggregates")
+    names = {a["name"] for a in report["aggregates"]}
+    assert "Service" not in names  # the usecase/handler.go Mutex
+
+
+def test_scan_aggregates_detects_pessimistic_via_mutex_only():
+    report = _run(FIXTURES / "aggregates_pessimistic")
+    by_name = {a["name"]: a for a in report["aggregates"]}
+    assert "Profile" in by_name
+    assert by_name["Profile"]["write_strategy"] == "pessimistic"
+    assert by_name["Profile"]["confidence"] == "medium"
 
 
 def test_scan_nonexistent_directory_exits_2():

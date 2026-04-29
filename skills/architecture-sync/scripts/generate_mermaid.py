@@ -12,15 +12,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from _common import JINJA_ENV, read_yaml, slugify, write_text_atomic
-
-READ_PREFIXES = (
-    "Get", "List", "Find", "Read", "Search", "Has", "Is", "Count", "Lookup", "Query", "Fetch",
-)
-
-
-def _is_read_endpoint(name: str) -> bool:
-    return any(name.startswith(p) for p in READ_PREFIXES)
+from _common import JINJA_ENV, is_read_endpoint, read_yaml, slugify, write_text_atomic
 
 
 def _normalize_upstream(item) -> dict:
@@ -52,8 +44,8 @@ def _enrich(doc: dict) -> dict:
         "endpoints": [
             {
                 **e,
-                "is_read": _is_read_endpoint(e["name"]),
-                "storage_op": "read" if _is_read_endpoint(e["name"]) else "write",
+                "is_read": is_read_endpoint(e["name"]),
+                "storage_op": "read" if is_read_endpoint(e["name"]) else "write",
             }
             for e in raw_endpoints
         ],

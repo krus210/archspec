@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-28
+
+### Added
+- **`metadata.archspec_strict` flag** — opt-in switch in `SERVICE_MAP.yaml` that promotes the new diagnostic checks (DET-006 / DEP-001) from WARN to BLOCK at commit time. Default false; existing YAML files remain valid without the flag.
+- **DET-006 — TODO catcher.** New pre-commit check `check_todos.py` and validator post-pass that flag literal `"TODO"` left in required-concrete fields: `dependencies.downstream.sync[].timeout`, `dependencies.storage[].name`, `events.{published,consumed}[].contract`, `api.endpoints[].contract`, `api.endpoints[].sla.{p99_latency,availability}`. WARN by default; BLOCK with `archspec_strict: true`. The CLI prints `WARN DET-006 …` on stderr and still exits 0 in default mode.
+- **DEP-001 — write-path × events consistency.** New pre-commit check `check_write_path_events.py`. WARN if `consistency.write_path.pattern == "outbox"` and `events.published == []` (incomplete spec); WARN if `events.published != []` and pattern is `direct` (no atomicity guarantee between state mutation and event emission). Promoted to BLOCK with `archspec_strict: true`.
+- **DEP-002 / DEP-003 / DEP-004 — multi-service graph consistency.** New pre-commit check `check_graph_consistency.py`. Activates when ≥2 `**/SERVICE_MAP.yaml` exist in the repo. Always WARN (never BLOCK, even in strict mode) because false-positives are unavoidable on partial monorepos. DEP-002: caller A names B in `downstream.sync` but B does not list A as upstream. DEP-003: published topic with no consumer in the monorepo. DEP-004: A.upstream lists B, but B does not call A and shares no event with it. Reproduces the freelance-marketplace `geo-service.upstream=api-gateway` mistake.
+- **`/archspec:check-architecture`** — new slash command. Reads every `SERVICE_MAP.yaml` under a repo root and prints a markdown audit (issues + optional `--full` summary table). Surfaces DET-006/DEP-001/DEP-002/DEP-003/DEP-004 in one place. Read-only.
+- **Aggregate auto-detection in `scan_go.py`.** New `aggregates: []` key in the JSON report. Heuristics: methods with name suffix `WithEvent` / `IfAbsent` / `CAS` → `optimistic`; `sync.Mutex` / `sync.RWMutex` inside `repository/` / `repo/` / `domain/` / `infra/` → `pessimistic`. Mutex outside scope (`usecase/`, `handler/`, `cmd/`) is ignored. Bootstrap step `3b-agg` proposes each finding via `AskUserQuestion`.
+- **Top-level architecture spec ingest (opt-in)** in `/archspec:init`. Step 2a asks for the path to a top-level architecture document (e.g. `docs/project/architecture.md`) and uses its contents as conversation context for subsequent confirm-prompts. Spec is a hint, never an override; the user is told once that stale specs should be ignored in favour of code reality.
+- **idempotency-by-name heuristic** in bootstrap step 3b. Endpoints whose name starts with a read prefix (`Get`, `List`, `Find`, `Read`, `Search`, `Has`, `Is`, `Count`, `Lookup`, `Query`, `Fetch`) default to `idempotency.required: false`; everything else (writes) defaults to `true`. The user always confirms — `No` on a write endpoint is recorded without any sermon.
+- **Cross-service invariants prompt** in bootstrap step 3d. When a service has confirmed `events.published`, `events.consumed`, or an `outbox` / `saga` write path, the skill asks for 1–3 `consistency.cross_service_invariants[]` lines (skippable; empty answer leaves `[]`).
+
+### Changed
+- `READ_PREFIXES` and `is_read_endpoint()` moved from `generate_mermaid.py` to `_common.py` so the bootstrap and the Go scanner can share the same list. No behavioural change for the generator.
+
+### Compatibility
+- Existing `SERVICE_MAP.yaml` files remain valid without changes — `archspec_strict` is optional. New WARN-only checks do not break existing pre-commit pipelines.
+
 ## [0.4.3] - 2026-04-27
 
 ### Fixed

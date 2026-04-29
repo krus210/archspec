@@ -17,9 +17,12 @@ from checks import (  # noqa: E402
     check_cycles,
     check_diagrams,
     check_exceptions,
+    check_graph_consistency,
     check_pragmas,
     check_references,
     check_schema,
+    check_todos,
+    check_write_path_events,
 )
 
 _CHECKS = (
@@ -30,6 +33,9 @@ _CHECKS = (
     check_breaking_changes,
     check_exceptions,
     check_pragmas,
+    check_todos,
+    check_write_path_events,
+    check_graph_consistency,
 )
 
 

@@ -16,6 +16,18 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 MANAGED_REGION_START = "<!-- archspec:managed-region:start -->"
 MANAGED_REGION_END = "<!-- archspec:managed-region:end -->"
 
+# Endpoint name prefixes that mark a read-only operation. Shared between the
+# Mermaid generator (read/write storage edge) and the Go scanner (is_read flag
+# attached to each endpoint finding so bootstrap can default idempotency).
+READ_PREFIXES = (
+    "Get", "List", "Find", "Read", "Search", "Has", "Is", "Count", "Lookup", "Query", "Fetch",
+)
+
+
+def is_read_endpoint(name: str) -> bool:
+    """True iff endpoint name starts with one of the canonical read prefixes."""
+    return any(name.startswith(p) for p in READ_PREFIXES)
+
 JINJA_ENV = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     undefined=StrictUndefined,
