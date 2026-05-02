@@ -23,10 +23,27 @@ READ_PREFIXES = (
     "Get", "List", "Find", "Read", "Search", "Has", "Is", "Count", "Lookup", "Query", "Fetch",
 )
 
+# HTTP verbs whose presence in a `<VERB> <path>` endpoint name marks the
+# endpoint as read-only. POST/PUT/PATCH/DELETE intentionally absent — those
+# mutate. Trailing space matters: it disambiguates `GET /...` from `GetX`.
+_HTTP_READ_VERB_PREFIXES = ("GET ", "HEAD ", "OPTIONS ")
+
 
 def is_read_endpoint(name: str) -> bool:
-    """True iff endpoint name starts with one of the canonical read prefixes."""
-    return any(name.startswith(p) for p in READ_PREFIXES)
+    """True iff the endpoint name denotes a read operation.
+
+    Recognises two name conventions:
+      * gRPC method names — `Get*`, `List*`, etc. (see ``READ_PREFIXES``).
+      * HTTP-verb-prefixed names — `GET /api/...`, `HEAD /...`, `OPTIONS /...`.
+
+    HTTP names without an explicit verb prefix (e.g. just `/api/v1/health`)
+    return False — there's no reliable way to infer intent without the verb.
+    """
+    if any(name.startswith(p) for p in READ_PREFIXES):
+        return True
+    if any(name.startswith(p) for p in _HTTP_READ_VERB_PREFIXES):
+        return True
+    return False
 
 JINJA_ENV = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),

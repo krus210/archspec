@@ -85,21 +85,91 @@ def _find_proto_contract(service_dir: Path, domain: str) -> str | None:
     Returns the path relative to service_dir (so it stays portable across
     machines) or None if no candidate is found.
     """
+    abs_path = _find_proto_contract_abs(service_dir, domain)
+    if abs_path is None:
+        return None
+    try:
+        return str(abs_path.relative_to(service_dir.resolve()))
+    except ValueError:
+        return str(abs_path)
+
+
+def _find_proto_contract_abs(service_dir: Path, domain: str) -> Path | None:
+    """Same as ``_find_proto_contract`` but returns the absolute path.
+
+    Internal helper — used by RPC-method enumeration which needs to actually
+    read the proto file.
+    """
     cursor = service_dir.resolve()
     for _ in range(_PROTO_LOOKUP_DEPTH):
         candidate_dir = cursor / "proto" / domain / "v1"
         if candidate_dir.is_dir():
             protos = sorted(candidate_dir.glob("*.proto"))
             if protos:
-                try:
-                    return str(protos[0].relative_to(service_dir.resolve()))
-                except ValueError:
-                    # Service is under a different subtree; emit absolute repo-rooted path.
-                    return str(protos[0])
+                return protos[0]
         if cursor.parent == cursor:
             break
         cursor = cursor.parent
     return None
+
+
+_PROTO_RPC_METHOD = re.compile(r"\brpc\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
+_PROTO_SERVICE_HEADER = re.compile(r"\bservice\s+([A-Za-z_]\w*)\s*\{")
+
+
+def _extract_service_body(text: str, service_name: str) -> str | None:
+    """Return the contents between matched braces of ``service <service_name> { ... }``.
+
+    Walks the text with a brace-balance counter so nested ``message { ... }``
+    blocks (rare in proto, but legal) do not confuse the parser. Returns None
+    when no matching service header is found.
+    """
+    for header in _PROTO_SERVICE_HEADER.finditer(text):
+        if header.group(1) != service_name:
+            continue
+        # `header.end()` points just past the opening `{`.
+        depth = 1
+        i = header.end()
+        while i < len(text) and depth > 0:
+            ch = text[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[header.end():i]
+            i += 1
+        return None
+    return None
+
+
+def _parse_proto_rpc_methods(proto_path: Path, server_name: str) -> list[str]:
+    """Extract RPC method names declared inside ``service <server_name> { ... }``.
+
+    ``server_name`` is the name from ``Register<X>Server`` with the trailing
+    ``Server`` stripped (e.g. ``OrderServiceServer`` → ``OrderService``).
+    Limiting to one service-block prevents bleed when a proto file declares
+    multiple services side-by-side (admin + public, etc.).
+
+    Returns names in source order with duplicates removed. Empty list when
+    the file is unreadable, the named service is missing, or the block has
+    no rpc declarations — the caller falls back to a single summary entry.
+    """
+    try:
+        text = proto_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    body = _extract_service_body(text, server_name)
+    if body is None:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in _PROTO_RPC_METHOD.finditer(body):
+        name = m.group(1)
+        if name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
 
 _GRPC_CLIENT_PATTERN = re.compile(
     r'\bgrpc\.(?:NewClient|Dial)\s*\(\s*([A-Za-z_]\w*|"[^"]+")'
@@ -231,9 +301,132 @@ def _scan_kafka(text: str, rel: Path) -> tuple[list[dict], list[dict]]:
     return pub, con
 
 
-def _scan_nats(text: str, rel: Path, const_table: dict[str, str]) -> tuple[list[dict], list[dict]]:
+_OUTBOX_WRAPPER = re.compile(
+    r"^func\s+\([^)]+\)\s+Publish([A-Z][A-Za-z0-9_]*)\s*\(",
+    re.MULTILINE,
+)
+_OUTBOX_BODY_LITERAL = re.compile(r'"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)"')
+
+
+def _camel_to_dotted(name: str) -> str:
+    """Convert ``MatchFound`` to ``match.found`` for outbox-wrapper topic guess."""
+    parts = re.findall(r"[A-Z][a-z0-9]*|[A-Z]+(?=[A-Z]|$)|[a-z0-9]+", name)
+    return ".".join(p.lower() for p in parts) if parts else name.lower()
+
+
+def _find_func_body_offsets(text: str, params_open_after: int) -> tuple[int, int] | None:
+    """Locate a Go function body's brace span from just past the params' ``(``.
+
+    ``params_open_after`` is the offset right after the opening ``(`` of the
+    parameter list (i.e. ``_OUTBOX_WRAPPER`` match's ``end()``). Steps:
+
+      1. Paren-balance forward to the matching ``)`` of the parameter list.
+      2. Scan ahead past the return type until the body's ``{``.
+      3. Brace-balance to the matching ``}``.
+
+    Returns ``(body_open_offset, body_close_offset)`` inclusive of both braces,
+    or ``None`` for malformed input (mismatched parens/braces, truncated
+    file). Naive — does not handle string or comment escapes inside
+    signatures, which is fine for typical Go code where braces don't appear
+    in parameter types or return types.
+    """
+    n = len(text)
+    depth = 1
+    i = params_open_after
+    while i < n and depth > 0:
+        c = text[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        i += 1
+    if depth != 0:
+        return None
+    while i < n and text[i] != "{":
+        i += 1
+    if i >= n:
+        return None
+    body_open = i
+    depth = 1
+    i += 1
+    while i < n and depth > 0:
+        c = text[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return (body_open, i)
+        i += 1
+    return None
+
+
+def _scan_outbox_wrapper_publish(
+    text: str, rel: Path
+) -> tuple[list[dict], list[tuple[int, int]]]:
+    """Emit medium-confidence publish findings for ``func (...) PublishX(...)``.
+
+    Returns ``(findings, wrapper_ranges)``. Each wrapper range is
+    ``(start_line, end_line)`` inclusive — the actual brace-balanced body
+    span of the wrapper function (NOT a fixed lookahead window). The range
+    is used by ``_collapse_events`` to suppress ``<dynamic>`` findings that
+    originate from a publish call inside the same wrapper body — the wrapper
+    finding already documents that publish.
+
+    Why the real body and not a lookahead window: a short wrapper like
+    ``func PublishFoo() error { return nc.Publish("foo", x) }`` followed by an
+    independent ``nc.Publish(deriveSubject(), nil)`` a few lines later would
+    otherwise have its dynamic publish silently swallowed by the wrapper's
+    suppression range, even though they are two unrelated call sites.
+
+    Heuristic: when a ``Publish<Name>`` method exists, read its body for
+    either an inline topic literal (medium confidence) or a NATS publish
+    call (low confidence, topic guessed from the method name in dotted form,
+    e.g. ``MatchFound`` → ``match.found``).
+    """
+    out: list[dict] = []
+    ranges: list[tuple[int, int]] = []
+    seen: set[tuple[str, str]] = set()
+    for m in _OUTBOX_WRAPPER.finditer(text):
+        method_name = m.group(1)
+        line_no = _line_of(text, m.start())
+        body_offsets = _find_func_body_offsets(text, m.end())
+        if body_offsets is None:
+            continue
+        body_open, body_close = body_offsets
+        snippet = text[body_open : body_close + 1]
+        end_no = _line_of(text, body_close)
+        topic_match = _OUTBOX_BODY_LITERAL.search(snippet)
+        if topic_match:
+            topic = topic_match.group(1)
+            confidence = "medium"
+        elif "nats." in snippet or ".Publish(" in snippet:
+            topic = _camel_to_dotted(method_name)
+            confidence = "low"
+        else:
+            continue
+        ranges.append((line_no, end_no))
+        key = (topic, str(rel))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "kind": "event",
+                "backend": "nats",
+                "topic": topic,
+                "source": f"{rel}:{line_no}",
+                "confidence": confidence,
+            }
+        )
+    return out, ranges
+
+
+def _scan_nats(
+    text: str, rel: Path, const_table: dict[str, str]
+) -> tuple[list[dict], list[dict], list[tuple[int, int]]]:
     if "nats-io/nats.go" not in text and "nats.Connect" not in text and "jetstream." not in text:
-        return [], []
+        return [], [], []
     pub: list[dict] = []
     con: list[dict] = []
 
@@ -241,6 +434,18 @@ def _scan_nats(text: str, rel: Path, const_table: dict[str, str]) -> tuple[list[
         for m in pat.finditer(text):
             subject = _resolve_subject(m.group(1), const_table)
             if subject is None:
+                # Dynamic subject (fmt.Sprintf, function arg, etc.) — record as
+                # low-confidence so the user sees the call site and confirms
+                # the topic by hand.
+                target.append(
+                    {
+                        "kind": "event",
+                        "backend": "nats",
+                        "topic": "<dynamic>",
+                        "source": f"{rel}:{_line_of(text, m.start())}",
+                        "confidence": "low",
+                    }
+                )
                 continue
             target.append({"kind": "event", "backend": "nats", "topic": subject,
                            "source": f"{rel}:{_line_of(text, m.start())}",
@@ -250,10 +455,66 @@ def _scan_nats(text: str, rel: Path, const_table: dict[str, str]) -> tuple[list[
     _emit(pub, _JETSTREAM_PUBLISH, "medium")
     _emit(con, _NATS_SUBSCRIBE, "medium")
     _emit(con, _NATS_QUEUE_SUBSCRIBE, "medium")
-    return pub, con
+    wrapper_pub, wrapper_ranges = _scan_outbox_wrapper_publish(text, rel)
+    pub.extend(wrapper_pub)
+    return pub, con, wrapper_ranges
 
 
 _MESSAGING_BACKENDS = ("kafka", "nats")
+
+
+_DYNAMIC_TOPIC = "<dynamic>"
+_CONFIDENCE_RANK = {"high": 2, "medium": 1, "low": 0}
+
+
+def _collapse_events(
+    events: list[dict],
+    wrapper_ranges_by_file: dict[str, list[tuple[int, int]]] | None = None,
+) -> list[dict]:
+    """Collapse duplicate event findings.
+
+    Two-pass:
+      1. Suppress ``<dynamic>`` entries whose source line falls inside the
+         body of a wrapper-derived publish (``func PublishX(...)``). The
+         wrapper finding already documents that publish, so ``<dynamic>``
+         from the inner ``nc.Publish(...)`` is redundant. Independent
+         dynamic publishes outside any wrapper survive — the user must see
+         them, since nothing else explains the call site.
+      2. De-dup by (backend, topic), retaining the highest-confidence record.
+         When confidences tie, keep the first occurrence (source order).
+
+    Without (1) the user would confirm one publish twice — once through the
+    wrapper-derived topic, once through the inner ``<dynamic>`` marker.
+    Without (2) we'd duplicate findings that the same publish produces via
+    different detection paths (e.g. literal-resolve + outbox-wrapper).
+    """
+    ranges = wrapper_ranges_by_file or {}
+
+    def _covered_by_wrapper(source: str) -> bool:
+        try:
+            file_part, line_part = source.rsplit(":", 1)
+            line_n = int(line_part)
+        except (ValueError, AttributeError):
+            return False
+        for start, end in ranges.get(file_part, []):
+            if start <= line_n <= end:
+                return True
+        return False
+
+    after_dynamic_filter = [
+        e for e in events
+        if e["topic"] != _DYNAMIC_TOPIC or not _covered_by_wrapper(e["source"])
+    ]
+    by_key: dict[tuple[str, str], dict] = {}
+    for e in after_dynamic_filter:
+        key = (e["backend"], e["topic"])
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = e
+            continue
+        if _CONFIDENCE_RANK[e["confidence"]] > _CONFIDENCE_RANK[existing["confidence"]]:
+            by_key[key] = e
+    return list(by_key.values())
 
 
 def _scan_events(file: Path, root: Path) -> tuple[list[dict], list[dict]]:
@@ -262,27 +523,21 @@ def _scan_events(file: Path, root: Path) -> tuple[list[dict], list[dict]]:
     const_table = _build_string_const_table(text)
     pub: list[dict] = []
     con: list[dict] = []
+    wrapper_ranges_by_file: dict[str, list[tuple[int, int]]] = {}
     if "kafka" in _MESSAGING_BACKENDS:
         kp, kc = _scan_kafka(text, rel)
         pub.extend(kp)
         con.extend(kc)
     if "nats" in _MESSAGING_BACKENDS:
-        np, nc = _scan_nats(text, rel, const_table)
+        np, nc, wrapper_ranges = _scan_nats(text, rel, const_table)
         pub.extend(np)
         con.extend(nc)
-    seen: set[tuple[str, str, str]] = set()
-    pub = [
-        e for e in pub
-        if (e["backend"], e["topic"], e["source"]) not in seen
-        and not seen.add((e["backend"], e["topic"], e["source"]))
-    ]
-    seen.clear()
-    con = [
-        e for e in con
-        if (e["backend"], e["topic"], e["source"]) not in seen
-        and not seen.add((e["backend"], e["topic"], e["source"]))
-    ]
-    return pub, con
+        if wrapper_ranges:
+            wrapper_ranges_by_file[str(rel)] = wrapper_ranges
+    return (
+        _collapse_events(pub, wrapper_ranges_by_file),
+        _collapse_events(con, wrapper_ranges_by_file),
+    )
 
 
 _STORAGE_PATTERNS: list[tuple[str, str, re.Pattern[str]]] = [
@@ -361,29 +616,124 @@ def _scan_downstream_sync(file: Path, root: Path) -> list[dict]:
 
 
 def _scan_grpc_endpoints(file: Path, root: Path) -> list[dict]:
+    """Emit one endpoint finding per RPC method.
+
+    Strategy: locate ``Register<X>Server(...)`` calls, then enumerate methods
+    of the matching ``proto/<domain>/v1/*.proto`` (when present). Two-pass:
+      1. For each server registration, try domain-based proto lookup
+         (``_find_proto_contract_abs(root, domain)``). Cache successful protos
+         as candidates.
+      2. For servers whose direct lookup failed (or whose proto lacked a
+         matching ``service`` block), probe the file-level candidate list. This
+         catches admin/public service splits where one ``.proto`` package
+         declares both ``BillingService`` and ``BillingAdminService``: domain
+         derivation gives ``billing-admin`` for the admin server, but the real
+         file lives under ``proto/billing/v1/billing.proto``.
+
+    When neither pass yields RPC methods, fall back to a single summary entry
+    naming the server interface — the questionnaire then asks the user to
+    enumerate methods manually.
+    """
     text = file.read_text(encoding="utf-8", errors="replace")
     rel = file.relative_to(root)
-    seen: set[str] = set()
-    out: list[dict] = []
+    registrations: list[tuple[str, int]] = []
+    seen_servers: set[str] = set()
     for m in _GRPC_REGISTER_PATTERN.finditer(text):
-        name = m.group(1)
-        if name in seen:
+        server_name = m.group(1)
+        if server_name in seen_servers:
             continue
-        seen.add(name)
-        finding: dict = {
-            "kind": "endpoint",
-            "protocol": "gRPC",
-            "method": "RPC",
-            "name": name,
-            "path": name,
-            "source": f"{rel}:{_line_of(text, m.start())}",
-            "confidence": "high",
-        }
-        contract = _find_proto_contract(root, _domain_from_grpc_server(name))
-        if contract:
-            finding["contract_hint"] = contract
-        out.append(finding)
+        seen_servers.add(server_name)
+        registrations.append((server_name, _line_of(text, m.start())))
+
+    proto_by_server: dict[str, Path | None] = {}
+    candidate_protos: list[Path] = []
+    for server_name, _ in registrations:
+        domain = _domain_from_grpc_server(server_name)
+        proto_abs = _find_proto_contract_abs(root, domain)
+        proto_by_server[server_name] = proto_abs
+        if proto_abs is not None and proto_abs not in candidate_protos:
+            candidate_protos.append(proto_abs)
+
+    out: list[dict] = []
+    for server_name, line in registrations:
+        proto_abs = proto_by_server[server_name]
+        # `server_name` is `<X>ServiceServer`; the matching `service <X>Service { ... }`
+        # block in proto identifies which RPC methods belong to this server.
+        proto_service_name = (
+            server_name[: -len("Server")] if server_name.endswith("Server") else server_name
+        )
+        methods: list[str] = (
+            _parse_proto_rpc_methods(proto_abs, proto_service_name) if proto_abs else []
+        )
+        if not methods:
+            for candidate in candidate_protos:
+                if candidate == proto_abs:
+                    continue
+                fallback = _parse_proto_rpc_methods(candidate, proto_service_name)
+                if fallback:
+                    methods = fallback
+                    proto_abs = candidate
+                    break
+        contract = None
+        if proto_abs is not None:
+            try:
+                contract = str(proto_abs.relative_to(root.resolve()))
+            except ValueError:
+                contract = str(proto_abs)
+        if not methods:
+            finding: dict = {
+                "kind": "endpoint",
+                "protocol": "gRPC",
+                "method": "RPC",
+                "name": server_name,
+                "path": server_name,
+                "source": f"{rel}:{line}",
+                "confidence": "high",
+            }
+            if contract:
+                finding["contract_hint"] = contract
+            out.append(finding)
+            continue
+        for method in methods:
+            finding = {
+                "kind": "endpoint",
+                "protocol": "gRPC",
+                "method": "RPC",
+                "name": method,
+                "path": f"{server_name}/{method}",
+                "source": f"{rel}:{line}",
+                "confidence": "high",
+            }
+            if contract:
+                finding["contract_hint"] = contract
+            out.append(finding)
     return out
+
+
+_OPENAPI_CANDIDATES = (
+    Path("api") / "schema.yaml",
+    Path("api") / "openapi.yaml",
+    Path("docs") / "openapi.yaml",
+    Path("openapi.yaml"),
+    Path("openapi") / "openapi.yaml",
+)
+
+
+def _find_openapi_contract(service_dir: Path) -> str | None:
+    """Return relative path to the first OpenAPI schema found under known locations.
+
+    Mirrors ``_find_proto_contract`` for HTTP services. Searches a small set of
+    conventional paths within ``service_dir`` only — does not walk parents
+    (HTTP schemas are typically scoped to a single service).
+    """
+    for candidate in _OPENAPI_CANDIDATES:
+        full = service_dir / candidate
+        if full.is_file():
+            try:
+                return str(full.resolve().relative_to(service_dir.resolve()))
+            except ValueError:
+                return str(candidate)
+    return None
 
 
 def _scan_http_endpoints(file: Path, root: Path) -> list[dict]:
@@ -391,6 +741,7 @@ def _scan_http_endpoints(file: Path, root: Path) -> list[dict]:
     rel = file.relative_to(root)
     seen: set[tuple[str, str]] = set()
     out: list[dict] = []
+    contract_hint = _find_openapi_contract(root)
     for method, pat in _HTTP_PATTERNS:
         for m in pat.finditer(text):
             path = m.group(1)
@@ -398,16 +749,17 @@ def _scan_http_endpoints(file: Path, root: Path) -> list[dict]:
             if key in seen:
                 continue
             seen.add(key)
-            out.append(
-                {
-                    "kind": "endpoint",
-                    "protocol": "HTTP",
-                    "method": method,
-                    "path": path,
-                    "source": f"{rel}:{_line_of(text, m.start())}",
-                    "confidence": "medium",
-                }
-            )
+            finding: dict = {
+                "kind": "endpoint",
+                "protocol": "HTTP",
+                "method": method,
+                "path": path,
+                "source": f"{rel}:{_line_of(text, m.start())}",
+                "confidence": "medium",
+            }
+            if contract_hint:
+                finding["contract_hint"] = contract_hint
+            out.append(finding)
     return out
 
 

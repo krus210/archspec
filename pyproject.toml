@@ -1,6 +1,6 @@
 [project]
 name = "archspec"
-version = "0.5.0"
+version = "0.6.0"
 description = "Spec-driven architecture validation for microservices"
 readme = "README.md"
 license = { text = "MIT" }

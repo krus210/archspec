@@ -1,0 +1,8 @@
+openapi: 3.0.0
+info:
+  title: tasks
+  version: 1.0.0
+paths:
+  /api/v1/tasks:
+    get: {}
+    post: {}
