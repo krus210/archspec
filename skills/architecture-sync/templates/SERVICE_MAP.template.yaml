@@ -33,7 +33,7 @@ consistency:
   model: eventual
   bounded_aggregate: REPLACE
   write_path:
-    pattern: outbox
+    pattern: direct
   read_path:
     consistency: eventual
   cross_service_invariants: []

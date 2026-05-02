@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package orders.v1;
+
+service OrderService {
+  rpc CreateOrder (CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder (GetOrderRequest) returns (GetOrderResponse);
+  rpc CancelOrder (CancelOrderRequest) returns (CancelOrderResponse);
+}
+
+message CreateOrderRequest {}
+message CreateOrderResponse {}
+message GetOrderRequest {}
+message GetOrderResponse {}
+message CancelOrderRequest {}
+message CancelOrderResponse {}

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package billing.v1;
+
+service BillingService {
+  rpc Charge (ChargeRequest) returns (ChargeResponse);
+  rpc Quote (QuoteRequest) returns (QuoteResponse);
+}
+
+service BillingAdminService {
+  rpc Refund (RefundRequest) returns (RefundResponse);
+  rpc Reconcile (ReconcileRequest) returns (ReconcileResponse);
+}
+
+message ChargeRequest {}
+message ChargeResponse {}
+message QuoteRequest {}
+message QuoteResponse {}
+message RefundRequest {}
+message RefundResponse {}
+message ReconcileRequest {}
+message ReconcileResponse {}

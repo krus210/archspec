@@ -138,16 +138,25 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
      - "Skip — false positive"
    ```
 
+   gRPC servers with a matching `proto/<domain>/v1/*.proto` produce one finding **per RPC method** (`name: CreateOrder`, `path: OrderServiceServer/CreateOrder`). Confirm each method individually so idempotency/SLA can be set per-method. When the proto cannot be located, the scanner falls back to a single summary entry — ask the user to enumerate methods manually.
+
    For each accepted endpoint, ask a follow-up batch (single `AskUserQuestion` call with multiple questions):
 
    - `idempotency.required` — boolean (`Yes` / `No`). **Propose** a default based on the endpoint name:
      - If the name starts with one of the read prefixes (`Get`, `List`, `Find`, `Read`, `Search`, `Has`, `Is`, `Count`, `Lookup`, `Query`, `Fetch`) → default `No` (idempotency is implicit).
      - Otherwise (writes like `Create*`, `Update*`, `Delete*`, `Send*`, `Verify*`, `Assign*`, `Submit*`, `Process*`, `Schedule*`, `Confirm*`, `Reject*`, `Cancel*`, `Set*`, `Add*`, `Remove*`) → default `Yes`. The shared list lives in `_common.READ_PREFIXES`.
      - On `No` for a write endpoint, just record `required: false` — no nag, no BLOCK.
-   - If `required: Yes`: `key_source` (default `"header: X-Idempotency-Key"` for HTTP, `"metadata: x-idempotency-key"` for gRPC), `storage` (default `"redis: idemp:{key}"`; user may type free text such as `"in-memory dedup store"` for non-redis mechanisms like a CAS repository or a per-process map).
-   - `sla.p99_latency` (default `"100ms"` for in-memory reads, `"500ms"` otherwise — propose, don't blindly fill).
-   - `sla.availability` (default `"99.9%"` — propose).
-   - `contract` (free text). If the scan finding includes `contract_hint`, **propose that path as the default** — e.g. for a gRPC server `RegisterGeoServiceServer` in a monorepo with `proto/geo/v1/geo.proto`, the scanner returns `contract_hint: "proto/geo/v1/geo.proto"`. Otherwise default to `"TODO"`.
+   - If `required: Yes`: `key_source` (default `"header: X-Idempotency-Key"` for HTTP, `"metadata: x-idempotency-key"` for gRPC); `storage` — **truthful default driven by accepted `dependencies.storage[]` findings**:
+     - Redis present → `"redis: idemp:{key}"`.
+     - Postgres present → `"postgres: idemp_keys table"`.
+     - No durable storage (empty or only `in-memory`) → `"not-implemented"` and remind the user: «Idempotency declared but no durable store wired. Recommend an ADR `docs/adr/<service>-idempotency.md` documenting the gap». Do **not** silently substitute Redis — that ships a YAML lie.
+     The user may override with free text (e.g. `"postgres: tx + outbox"`, `"in-memory dedup store"`).
+   - `sla.p99_latency` — default `"not-measured"`. Optional alternative: `"100ms"`/`"500ms"` (read/write rough estimates) only when the user explicitly opts in. **Do not blindly fill aspirational numbers** — a `not-measured` marker is more honest than a fictional `99.9%`.
+   - `sla.availability` — default `"not-measured"`; same opt-in for `"99.9%"` if user has SLO data.
+   - `contract` — derive from the scanner's `contract_hint`:
+     - gRPC with proto found → `contract_hint` (e.g. `"proto/geo/v1/geo.proto"`).
+     - HTTP with `api/schema.yaml` / `api/openapi.yaml` / `docs/openapi.yaml` / `openapi.yaml` / `openapi/openapi.yaml` found → `contract_hint`.
+     - Nothing found → default `"not-documented"` (visible debt) — **not** `"TODO"` (which means «I plan to write it»). Use `"TODO"` only when the user explicitly says «I'll add the schema this week».
 
    For each `downstream_sync` finding, ask in one `AskUserQuestion` batch:
 
@@ -202,7 +211,24 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
      The scanner detects gRPC consumers by matching imports of `<...>/<domain>/v1` and method-request literals like `<alias>.<Method>Request{`. HTTP-only consumers are NOT auto-detected and must be added manually.
 
-     For each consumer, ask the user one `AskUserQuestion` to confirm/skip and write each accepted entry to `dependencies.upstream[]` as a structured object. **Do not** drop the `endpoints_used` array — it is what enables circular-dependency analysis later.
+     **Apply the findings deterministically — do NOT rely on the LLM to remember to write each entry.** Use the merge script:
+
+     ```bash
+     ${CLAUDE_PROJECT_DIR}/bin/archspec-python \
+       ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/apply_upstream.py \
+       docs/SERVICE_MAP.yaml --reverse-scan-json /tmp/archspec-reverse.json
+     ```
+
+     Without `--write`, the script prints a unified diff. Show the diff to the user via one `AskUserQuestion`:
+
+     - `Apply N upstream entries discovered via monorepo-scan?` — options:
+       - `Yes — apply all` → re-run with `--write`.
+       - `Yes, but edit some` → fall back to the per-consumer confirmation loop below.
+       - `Skip — none of these` → no changes.
+
+     The script preserves existing manual entries (those with `discovered_via: manual`), upgrades bare-string `- foo` entries into structured form, and unions `endpoints_used` with scan results.
+
+     For the «edit some» branch (rare): for each consumer, ask `AskUserQuestion` to confirm/skip and edit the YAML by hand.
 
    - **`none` (not a monorepo, or repo not on disk)** — fall back to a manual `AskUserQuestion`:
 
@@ -216,11 +242,21 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
    Write each accepted entry to `concurrency.aggregates[]` as `{name, write_strategy}`. Skip entries are silently dropped. If the scanner found no aggregates **and** any mutating endpoint was confirmed in 3b, ask one trailing question: "What is the main aggregate of this service (free text, or `skip` to leave empty)?". Otherwise (read-only service) leave `aggregates: []`.
 
-3c0. **Decide `consistency.write_path.pattern`** based on findings (read-only-service heuristic):
+3c0. **Decide `consistency.write_path.pattern`** based on findings:
 
-   - If the user accepted **zero** `events_published`, accepted **zero** mutating endpoints, and the only confirmed storage entries are read-only (e.g. `in-memory`, replicated cache), default `consistency.write_path.pattern` to `direct` (the service is read-only — outbox is meaningless).
    - "Mutating endpoint" = name does NOT start with `Get`, `List`, `Find`, `Read`, `Search`, `Has`, `Is`, `Count`, `Lookup`, `Query`, or `Fetch`.
-   - Otherwise (any mutating endpoint OR any published event), keep the seed default `outbox` BUT confirm with the user via a single `AskUserQuestion`: "Choose the write-path pattern: `outbox` (recommended for services that publish events), `direct` (synchronous writes, no event publishing), `saga` (multi-step distributed transactions)."
+
+   Decision matrix (recommend, then confirm):
+
+   | confirmed `events.published` | confirmed mutating endpoint | confirmed durable storage (postgres/redis/mongo/sql/etc., excludes read-only `in-memory`) | recommend |
+   | --- | --- | --- | --- |
+   | none | none | any | `direct` (read-only service) |
+   | none | yes | none | `direct` (stateless gateway / forwarder — outbox needs durable storage; recommending `outbox` here ships a structural lie) |
+   | none | yes | yes | `direct` (writes go straight to DB, no async fan-out) |
+   | any | any | yes | `outbox` (durable outbox table backs the publish) |
+   | any | any | none | flag as inconsistency: "publishes events but has no durable storage". Confirm with the user: either add storage entry, or change pattern to `direct` knowing events are best-effort. |
+
+   In every non-trivial case, confirm with one `AskUserQuestion`: "Choose the write-path pattern: `outbox` (recommended for services that publish events from a durable store), `direct` (synchronous writes, no event publishing — also correct for stateless gateways), `saga` (multi-step distributed transactions)." Pre-select the recommendation as the first option.
 
 3c. **Write the confirmed findings to `docs/SERVICE_MAP.yaml`** using the `Edit` tool. Build each YAML block from the confirmed answers; do not write rejected items. Schema fields and defaults:
 
@@ -232,11 +268,11 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
          required: <bool>
          # if required is true: key_source and storage are required by schema
          key_source: <user-provided>
-         storage: <user-provided>
-       contract: <user-provided or "TODO">
+         storage: <user-provided or "not-implemented">   # see § Truthful state values
+       contract: <user-provided or "not-documented">     # use "TODO" only if user said "I'll write the schema"
        sla:
-         p99_latency: <user-provided or "TODO">
-         availability: <user-provided or "TODO">
+         p99_latency: <user-provided or "not-measured">
+         availability: <user-provided or "not-measured">
      ```
    - `dependencies.upstream[]` (structured form, preferred — produced by step 3b-rev):
      ```yaml
@@ -265,13 +301,13 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    - `events.published[]`:
      ```yaml
      - topic: <scanner>
-       contract: <user or "TODO">
+       contract: <user or "not-documented">
        version: <user or 1>
      ```
    - `events.consumed[]`:
      ```yaml
      - topic: <scanner>
-       contract: <user or "TODO">
+       contract: <user or "not-documented">
        expected_version: <user or 1>
      ```
 
@@ -320,6 +356,21 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
 If `/archspec:init` is invoked again, skip every step that would modify a file with archspec markers. Refresh only the managed regions and the schema copy. Never overwrite user-authored content.
 
+## Truthful state values
+
+archspec records **what is**, not **what is wished for**. When a field cannot be filled with a real value, prefer one of these explicit markers over inventing one:
+
+| Marker | Meaning | When to use | Diagnostics |
+| --- | --- | --- | --- |
+| `TODO` | I plan to fill this in soon | Stub on a fresh draft, expected to disappear within a week | DET-006 |
+| `not-implemented` | The feature is not in the code at all | `idempotency.storage` when no durable store is wired; published-event `contract` when no schema exists | IDEMP-001, DOC-002 |
+| `not-documented` | Implementation exists but the schema/contract is not written | `api.endpoints[].contract` when no proto/openapi found | DOC-001 |
+| `not-measured` | Metric not collected | `sla.p99_latency`, `sla.availability` without SLO/observability data | SLA-001 (under `metadata.archspec_strict: true`) |
+
+Rule of thumb: if you would have to guess, write the marker that names the gap. A `TODO` says «I owe a value»; `not-implemented` says «the work owes a feature». Different action items.
+
+The most important diagnostic is **IDEMP-002** — `check_architecture.py` reports it when `idempotency.storage` mentions a technology (e.g. `redis: idemp:{key}`) that does not appear in `dependencies.storage[].type`. This is the YAML-lies signal: declared infrastructure that is not actually wired.
+
 ## Check architecture (used by /archspec:check-architecture)
 
 Read-only audit of an entire monorepo. Walks every `**/SERVICE_MAP.yaml` reachable from the repo root and reports cross-spec mismatches.
@@ -337,12 +388,20 @@ Read-only audit of an entire monorepo. Walks every `**/SERVICE_MAP.yaml` reachab
    Flags:
    - `--issues-only` — silent output when no issues; exit 0.
    - `--full` — include the per-service summary table (downstream / declared upstream / computed upstream / pubs / subs).
+   - `--apply-upstream-fixes` — for every DEP-002 finding, run `reverse_scan` against the callee, merge the discovered consumers into the callee's `dependencies.upstream[]`, and **report planned edits as a dry-run** (does NOT touch files). Re-run with `--write` to actually rewrite YAML. Use this two-step flow after a monorepo-wide bootstrap to clear all DEP-002 in one pass: read the dry-run summary, get user confirmation via `AskUserQuestion`, then run with `--write`.
 
 3. Surface the markdown report verbatim. The report flags:
    - **DET-006** — `TODO` literals in required-concrete fields.
    - **DEP-001** — write_path × events inconsistency (outbox without events, or direct with events).
+   - **DEP-001b** — `outbox` declared but `dependencies.storage[]` is empty (outbox needs durable storage).
    - **DEP-002** — service A calls B but B does not list A as upstream.
    - **DEP-003** — published topic with no consumer in the monorepo.
    - **DEP-004** — declared upstream not reflected in the claimed caller's spec.
+   - **DEP-005** — mutating endpoint has no caller listed in `upstream[].endpoints_used` (orphan write — dead code or undocumented external client). WARN-level: HTTP gateways with external clients legitimately have no monorepo callers.
+   - **IDEMP-001** — `idempotency.required=true` with `storage="not-implemented"` (visible debt).
+   - **IDEMP-002** — `idempotency.storage` references a technology missing from `dependencies.storage[]` (YAML lies — most common on services that copy `"redis: idemp:{key}"` from defaults without wiring Redis).
+   - **DOC-001** — endpoint `contract: not-documented`.
+   - **DOC-002** — published event `contract: not-documented` or `not-implemented`.
+   - **SLA-001** — SLA field set to `not-measured` while `metadata.archspec_strict: true`.
 
-4. Suggest follow-ups based on the report. Do **not** rewrite any SERVICE_MAP.yaml automatically — it is the user's call which findings to address.
+4. Suggest follow-ups based on the report. Do **not** rewrite any SERVICE_MAP.yaml automatically without user permission — `--apply-upstream-fixes` is the only mutating mode and only fixes DEP-002.
