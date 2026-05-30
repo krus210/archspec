@@ -81,6 +81,11 @@ This command does **not** modify any file. It produces a report.
 
 8. End with one-line summary: `archspec validate: N BLOCK, N WARN, N INFO, N suppressed.`
 
+## Do not dismiss findings
+
+- A passing `go build` / `go test` does **not** clear a linter or LSP finding. The tests were usually written alongside the code under review and cover the same happy path, so green tests prove nothing about declared invariants (idempotency, outbox, ownership).
+- Resolve each finding, or record an explicit `exceptions[]` entry in `docs/SERVICE_MAP.yaml` (or an inline `archspec:ignore` pragma) with a reason. Never wave a finding away as "stale" without re-running the linter to confirm.
+
 ## Reference
 
 See `skills/architecture-sync/SKILL.md` for severity definitions and the determinism contract that backs the deterministic prefix of this report.

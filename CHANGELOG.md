@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-30
+
+### Added
+- **Clarify-ambiguities gate in `architecture-investigate`**: before proposing any
+  YAML edits, the skill now walks a fixed checklist of cross-service ambiguity
+  dimensions (entry point & ownership, delivery semantics & idempotency, numeric
+  limits/boundaries, identity & join keys, failure/terminal paths, write-path
+  conformance) and asks the user via `AskUserQuestion` for every dimension the
+  prompt and the contract do not already settle. Closes the failure mode where the
+  skill jumped straight to a change plan and silently baked guessed answers
+  (ownership boundary, dedup key, off-by-one limit) into the contract.
+- **Deviation guard in `architecture-investigate`**: proposed edits that change who
+  owns an action, sidestep `consistency.write_path.pattern`, or relax a declared
+  invariant must be flagged and explicitly confirmed — a generated contract line no
+  longer silently ratifies an unaffirmed design.
+
+### Changed
+- `architecture-investigate` now ends with the **full loop** (sync → implement →
+  `/archspec:validate` → `/archspec:check-architecture`) instead of stopping at
+  `/archspec:sync`, so the behavioural linters (outbox, idempotency,
+  optimistic-locking) are actually invoked after implementation.
+- `/archspec:validate` gains a **"Do not dismiss findings"** note: a passing
+  `go build`/`go test` does not clear a linter or LSP finding; resolve it or record
+  an explicit exception with a reason.
+
 ## [0.6.0] - 2026-05-02
 
 ### Added

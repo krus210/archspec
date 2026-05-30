@@ -1,6 +1,6 @@
 {
   "name": "archspec",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Spec-driven architecture validation for microservices",
   "author": { "name": "krus210" },
   "homepage": "https://github.com/krus210/archspec",
