@@ -42,3 +42,28 @@ def test_architecture_investigate_skill_is_read_only():
     # Belt-and-braces: the skill must NOT mention sync.py / git add — those would be writes.
     assert "git add" not in text
     assert "sync.py" not in text
+
+
+def test_investigate_has_clarify_gate():
+    """investigate must force clarifying questions on ambiguous requirements.
+
+    Regression guard for the failure mode where the skill jumped straight to
+    proposing YAML edits without interrogating ownership / idempotency / limits.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8").lower()
+    assert "clarif" in text or "ambiguit" in text, "investigate must have a clarify/ambiguity gate"
+    assert "askuserquestion" in text, "the clarify gate should use AskUserQuestion to ask the user"
+    for dimension in ("ownership", "idempotency", "write-path"):
+        assert dimension in text, f"clarify checklist should cover the '{dimension}' dimension"
+
+
+def test_investigate_points_to_validation_gate():
+    """investigate must wire the post-implementation validation gate into its
+    closing next step so the behavioural linters actually run."""
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8").lower()
+    assert "/archspec:validate" in text, (
+        "investigate should point to /archspec:validate after implementing"
+    )
+    assert "/archspec:check-architecture" in text, (
+        "investigate should point to /archspec:check-architecture for cross-service changes"
+    )
