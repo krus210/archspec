@@ -1,0 +1,8 @@
+%% archspec container diagram for task-service
+flowchart LR
+  subgraph svc_box["task-service"]
+    svc[task-service]
+  end
+  up_api-gateway[api-gateway] -->|CreateTask, GetTask, ListTasks| svc
+  svc -.-> store_task-store[("in-memory: task-store")]
+  svc ==>|publish v1| pub_task-created>task.created]

@@ -6,4 +6,16 @@ description: Bootstrap a service for archspec — auto-discover endpoints/depend
 
 Run the `architecture-sync` skill's **Bootstrap** section.
 
+Expected output:
+
+- `docs/SERVICE_MAP.yaml`
+- `docs/diagrams/context.mmd`
+- `docs/diagrams/container.mmd`
+- `docs/diagrams/sequence.mmd`
+- `docs/ARCHITECTURE.md`
+- `.servicemap/schema.json`
+- `docs/adr/`
+- archspec git hooks
+- managed archspec block in `CLAUDE.md`
+
 Open `skills/architecture-sync/SKILL.md` and follow "Bootstrap (used by /archspec:init)" verbatim.

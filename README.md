@@ -65,6 +65,70 @@ cd path/to/your-service
 This creates `docs/SERVICE_MAP.yaml`, generates initial diagrams + `ARCHITECTURE.md`,
 installs the pre-commit hook, and appends the archspec block to `CLAUDE.md`.
 
+## What you get
+
+archspec is intentionally small: each command/skill has a concrete artifact at the
+end, and those artifacts stay in the repo.
+
+| Flow | Output |
+|---|---|
+| `/archspec:init` / `architecture-sync` bootstrap | `docs/SERVICE_MAP.yaml`, `docs/diagrams/{context,container,sequence}.mmd`, generated `docs/ARCHITECTURE.md`, `.servicemap/schema.json`, `docs/adr/`, installed git hooks, and the archspec block in `CLAUDE.md` |
+| `/archspec:sync` / `architecture-sync` | Regenerated Mermaid diagrams and the managed region of `docs/ARCHITECTURE.md` |
+| `/archspec:investigate` / `architecture-investigate` | Read-only contract summary, clarification questions, chat-only Mermaid for the proposed change, YAML diff to apply before coding, and the validation loop to run after implementation |
+| `/archspec:validate` | Markdown report grouped by `BLOCK` / `WARN` / `INFO` / `SUPPRESSED`, with file references and fix hints |
+| `/archspec:check-architecture` | Monorepo-wide architecture audit across all `SERVICE_MAP.yaml` files |
+
+The generated diagrams are plain Mermaid, so a fresh `/archspec:init` produces
+reviewable text artifacts rather than screenshots. Example output from a
+`task-service` init is checked in under
+[`examples/task-service-init-output/docs/diagrams`](examples/task-service-init-output/docs/diagrams).
+
+Context diagram:
+
+```mermaid
+flowchart LR
+  subgraph this["task-service"]
+    svc[task-service]
+  end
+  upstream_api-gateway[api-gateway] --> svc
+  svc -.-> storage_task-store[("in-memory: task-store")]
+  svc ==>|publish| topic_task-created>task.created]
+```
+
+Container diagram:
+
+```mermaid
+flowchart LR
+  subgraph svc_box["task-service"]
+    svc[task-service]
+  end
+  up_api-gateway[api-gateway] -->|CreateTask, GetTask, ListTasks| svc
+  svc -.-> store_task-store[("in-memory: task-store")]
+  svc ==>|publish v1| pub_task-created>task.created]
+```
+
+Sequence diagram:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant client as Client
+  participant svc as task-service
+  participant task-store as in-memory:task-store
+  participant events as message-bus
+  client->>svc: gRPC CreateTask
+  Note over svc: read X-Idempotency-Key
+  svc->>task-store: write
+  svc->>events: publish task.created (v1)
+  svc-->>client: response
+  client->>svc: gRPC GetTask
+  svc->>task-store: read
+  svc-->>client: response
+  client->>svc: gRPC ListTasks
+  svc->>task-store: read
+  svc-->>client: response
+```
+
 ## What `/archspec:init` does
 
 For Go services, `init` runs a read-only scanner over your source files and pre-fills `docs/SERVICE_MAP.yaml` with what it finds:
@@ -92,10 +156,10 @@ See `commands/*.md` for full details.
 
 ## Skills (autopilot)
 
-| Skill | Triggers when |
-|---|---|
-| `architecture-sync` | After Edit on `SERVICE_MAP.yaml`; phrases like "regenerate diagram", "service map drift" |
-| `architecture-investigate` | Phrases like "let's add X", "investigate Y", "understand how Z works" |
+| Skill | Triggers when | Produces |
+|---|---|---|
+| `architecture-sync` | After Edit on `SERVICE_MAP.yaml`; phrases like "regenerate diagram", "service map drift" | Validated `SERVICE_MAP.yaml`, refreshed Mermaid diagrams, refreshed `ARCHITECTURE.md`, staged generated artifacts |
+| `architecture-investigate` | Phrases like "let's add X", "investigate Y", "understand how Z works" | Read-only architecture slice, clarification gate, change-only Mermaid, proposed YAML diff, validation checklist |
 
 ## What gets validated
 

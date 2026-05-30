@@ -7,6 +7,27 @@ description: Use when the user edits SERVICE_MAP.yaml, asks to "regenerate diagr
 
 Regenerates Mermaid diagrams and `docs/ARCHITECTURE.md` from `docs/SERVICE_MAP.yaml`. Deterministic — same input ⇒ same output bytes.
 
+## What this skill produces
+
+### Existing service map (`/archspec:sync`)
+
+- Validates `docs/SERVICE_MAP.yaml` against `.servicemap/schema.json`.
+- Rewrites `docs/diagrams/context.mmd`, `docs/diagrams/container.mmd`, and `docs/diagrams/sequence.mmd`.
+- Rewrites only the managed region of `docs/ARCHITECTURE.md`.
+- Stages `docs/diagrams/` and `docs/ARCHITECTURE.md`.
+- Ends with `archspec sync: <N> diagrams + ARCHITECTURE.md regenerated.`
+
+### New service (`/archspec:init`)
+
+- Creates `docs/SERVICE_MAP.yaml` from the template.
+- Creates `docs/diagrams/{context,container,sequence}.mmd` and `docs/ARCHITECTURE.md`.
+- Creates `.servicemap/schema.json` and `docs/adr/`.
+- Installs the archspec git hooks.
+- Appends the managed archspec block to `CLAUDE.md`.
+- Leaves truthful debt markers (`not-documented`, `not-measured`, `not-implemented`) when the scanner or user cannot prove a field.
+
+Reference init output lives in `examples/task-service-init-output/docs/diagrams/`.
+
 ## When to run
 
 - User edited `docs/SERVICE_MAP.yaml`.
