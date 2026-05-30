@@ -1,0 +1,18 @@
+%% archspec sequence diagram for task-service
+sequenceDiagram
+  autonumber
+  participant client as Client
+  participant svc as task-service
+  participant task-store as in-memory:task-store
+  participant events as message-bus
+  client->>svc: gRPC CreateTask
+  Note over svc: read X-Idempotency-Key
+  svc->>task-store: write
+  svc->>events: publish task.created (v1)
+  svc-->>client: response
+  client->>svc: gRPC GetTask
+  svc->>task-store: read
+  svc-->>client: response
+  client->>svc: gRPC ListTasks
+  svc->>task-store: read
+  svc-->>client: response

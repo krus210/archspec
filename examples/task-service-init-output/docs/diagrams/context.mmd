@@ -1,0 +1,9 @@
+%% archspec context diagram for task-service
+%% generated from SERVICE_MAP.yaml - do not edit by hand
+flowchart LR
+  subgraph this["task-service"]
+    svc[task-service]
+  end
+  upstream_api-gateway[api-gateway] --> svc
+  svc -.-> storage_task-store[("in-memory: task-store")]
+  svc ==>|publish| topic_task-created>task.created]

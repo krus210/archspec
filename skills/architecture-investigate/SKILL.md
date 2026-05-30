@@ -12,6 +12,18 @@ Read-side workflow. Never modifies files. Produces:
 3. An inline Mermaid diagram showing **only the change** the user is proposing.
 4. A bulleted list of YAML edits the user should make before writing code.
 
+## Output contract
+
+Every run should end with the same shape, so the user can act on it without
+guessing what is next:
+
+- **Contract slice** — 5-8 lines citing exact field paths from `docs/SERVICE_MAP.yaml`.
+- **Open questions** — only the ambiguity dimensions not already answered by the prompt or contract.
+- **Change diagram** — chat-only Mermaid, scoped to the proposed change, with new or changed nodes marked `:::new`.
+- **YAML patch** — unified-diff snippet the user can apply before coding; no files are edited by this skill.
+- **Invariant/deviation notes** — explicit callouts when the proposal touches ownership, write path, or declared invariants.
+- **Next loop** — `apply YAML edits -> /archspec:sync -> implement -> /archspec:validate -> /archspec:check-architecture` when the change spans services.
+
 ## When to run
 
 - User asks "let's add X", "investigate Y", "how does Z work?".
