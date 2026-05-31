@@ -133,9 +133,10 @@ def test_investigate_has_self_review_loop():
     assert "diagram and yaml" in low or "diagram + yaml" in low, (
         "the self-review loop must re-examine the drafted diagram and YAML, not just the prompt"
     )
-    # the output note must follow the literal pinned shape, not a freeform sentence
-    assert "Self-review: <N> passes" in text, (
-        "the self-review output note must use the literal 'Self-review: <N> passes, ...' shape"
+    # the output note must follow the literal pinned shape, not a freeform sentence.
+    # pass(es) keeps singular/plural grammatical while a strict validator can use pass(es)?
+    assert "Self-review: <N> pass(es)" in text, (
+        "the self-review output note must use the literal 'Self-review: <N> pass(es), ...' shape"
     )
 
 

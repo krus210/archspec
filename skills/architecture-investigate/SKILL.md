@@ -23,7 +23,7 @@ guessing what is next:
 - **YAML patch** — unified-diff snippet the user can apply before coding; no files are edited by this skill.
 - **Event/key fan-out** — from a scan of the full `SERVICE_MAP.yaml` set, the complete list of producers and consumers for each new or changed event and dedup/join key, with each dead-end branch's terminal state + notification; undetermined fan-out marked `# UNCONFIRMED`.
 - **Invariant/deviation notes** — explicit callouts when the proposal touches ownership, write path, or declared invariants.
-- **Self-review** — one line in the literal shape `Self-review: <N> passes, <findings or "no findings">` recording the loop result (always emitted).
+- **Self-review** — one line in the literal shape `Self-review: <N> pass(es), <findings or "no findings">` recording the loop result (always emitted).
 - **Next loop** — `apply YAML edits -> /archspec:sync -> implement -> /archspec:validate -> /archspec:check-architecture` when the change spans services.
 
 ## When to run
@@ -124,7 +124,7 @@ guessing what is next:
    - One event with two semantic consumers where one is a client notification fired before the outcome is known (step 7).
    - An external trigger with no public-edge entry point, or one that trusts a client-supplied identity (Entry point & ownership).
 
-   Record the outcome as a one-line note in the output using the literal prefix and shape `Self-review: <N> passes, <what was found and fixed, or "no findings">` — e.g. `Self-review: 2 passes, found+fixed premature client notify and a stale dedup key; no remaining findings`. Always emit this line, even on a clean first pass (`Self-review: 1 pass, no findings`). If a finding can't be resolved without the user, raise it as a new open question rather than shipping it.
+   Record the outcome as a one-line note in the output using the literal prefix and shape `Self-review: <N> pass(es), <what was found and fixed, or "no findings">` — write the count grammatically (`1 pass`, `2 passes`). E.g. `Self-review: 2 passes, found+fixed premature client notify and a stale dedup key; no remaining findings`. Always emit this line, even on a clean first pass (`Self-review: 1 pass, no findings`). If a finding can't be resolved without the user, raise it as a new open question rather than shipping it.
 
 10. **End with the full loop, not just sync.** The contract is only safe if code is checked back against it. Spell out the path: apply the YAML edits → `/archspec:sync` → implement → `/archspec:validate` (runs the behavioural linters — outbox, idempotency, optimistic-locking) → `/archspec:check-architecture` for any change that spans more than one service. A green build or passing unit tests is **not** a substitute for `/archspec:validate`: those tests usually cover only the happy path that was just written.
 

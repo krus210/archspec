@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Self-review loop (step 9).** After drafting the diagram and YAML, the skill re-runs
   the checklist plus a named anti-pattern list against *its own proposal* (not just the
   prompt), looping until a clean pass and emitting a note in the fixed shape
-  `Self-review: <N> passes, <findings or "no findings">`.
+  `Self-review: <N> pass(es), <findings or "no findings">`.
 
 ### Changed
 - `architecture-investigate` clarify checklist sharpened: the **Entry point & ownership**
