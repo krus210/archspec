@@ -15,14 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a reject path depends on `assigned_worker` set by a separate `match.found` consumer
   and silently no-ops or resurrects cleared state.
 - **Event/key fan-out trace (step 7).** For every new or changed event and every
-  changed dedup/idempotency/join key, the skill now enumerates *all* producers and
-  consumers — catching a dedup key fixed in one consumer but left stale in another, and
-  dead-end branches that log-and-return without a terminal state or notification. Also
-  flags a single event silently serving two semantic purposes (matching trigger *and*
-  premature client notification).
+  changed dedup/idempotency/join key, the skill now scans the *full* `SERVICE_MAP.yaml`
+  set (not just the slice from step 2) for `events.published` / `events.consumed` / topic
+  names / dedup keys, enumerating *all* producers and consumers — catching a dedup key
+  fixed in one consumer but left stale in another, and dead-end branches that log-and-return
+  without a terminal state. Undetermined fan-out is marked `# UNCONFIRMED` rather than
+  assumed complete. A single event carrying **two semantic roles** (matching trigger *and*
+  premature client notification) is now **prohibited**: the skill must split it into
+  separate events or block the YAML patch with an open question.
 - **Self-review loop (step 9).** After drafting the diagram and YAML, the skill re-runs
   the checklist plus a named anti-pattern list against *its own proposal* (not just the
-  prompt), looping until a clean pass and recording a one-line `Self-review` note.
+  prompt), looping until a clean pass and emitting a note in the fixed shape
+  `Self-review: <N> passes, <findings or "no findings">`.
 
 ### Changed
 - `architecture-investigate` clarify checklist sharpened: the **Entry point & ownership**

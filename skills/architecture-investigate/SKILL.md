@@ -21,9 +21,9 @@ guessing what is next:
 - **Open questions** — only the ambiguity dimensions not already answered by the prompt or contract.
 - **Change diagram** — chat-only Mermaid, scoped to the proposed change, with new or changed nodes marked `:::new`.
 - **YAML patch** — unified-diff snippet the user can apply before coding; no files are edited by this skill.
-- **Event/key fan-out** — for each new or changed event and dedup/join key, the full list of producers and consumers, with each dead-end branch's terminal state + notification.
+- **Event/key fan-out** — from a scan of the full `SERVICE_MAP.yaml` set, the complete list of producers and consumers for each new or changed event and dedup/join key, with each dead-end branch's terminal state + notification; undetermined fan-out marked `# UNCONFIRMED`.
 - **Invariant/deviation notes** — explicit callouts when the proposal touches ownership, write path, or declared invariants.
-- **Self-review** — one line recording the self-review loop result (passes run, findings fixed, anything escalated to an open question).
+- **Self-review** — one line in the literal shape `Self-review: <N> passes, <findings or "no findings">` recording the loop result (always emitted).
 - **Next loop** — `apply YAML edits -> /archspec:sync -> implement -> /archspec:validate -> /archspec:check-architecture` when the change spans services.
 
 ## When to run
@@ -100,13 +100,16 @@ guessing what is next:
 
    **Deviation guard**: when an edit crosses an existing boundary — changes who owns an action, adds a publish that sidesteps `consistency.write_path.pattern`, or relaxes an entry in `service.invariants` / `consistency.cross_service_invariants` — call it out in one line ("this deviates from `<field>`: `<why>`") and get explicit confirmation. A generated contract line must not silently ratify a design the user never affirmed.
 
-7. **Trace every new or changed event and key across *all* producers and consumers.** A change is only complete when every service that touches the event or key is accounted for — not just the one the prompt named. For each event you add or change, and for each dedup / idempotency / join key you change, list:
+7. **Trace every new or changed event and key across *all* producers and consumers.** Step 2 let you read only the slice that matters; this step is the exception — you must **scan the full `SERVICE_MAP.yaml` set** (every service's contract in the monorepo), because the "dedup fixed in one consumer but missed in another" class is invisible from a single slice. Operationally, for each event you add or change and each dedup / idempotency / join key you change:
 
+   - Grep/scan **every** contract for `events.published`, `events.consumed`, and the topic/event name, plus any `idempotency` / dedup / join-key field that references it.
    - **Producers** — who emits it, and through which write path.
-   - **Consumers** — *every* subscriber, and for each: does it dedup on the (possibly new) key? does it order-depend on another event? does it even have a handler for this event, or does it silently drop it?
+   - **Consumers** — *every* subscriber found by the scan, and for each: does it dedup on the (possibly new) key? does it order-depend on another event? does it even have a handler for this event, or does it silently drop it?
    - **Dead-ends** — branches where processing stops (no candidates, empty result, exhausted limit). Each must end in a state transition **and** the notification the terminal-path dimension demands.
 
-   A single event must not silently serve **two unrelated semantic purposes** — e.g. one `task.reassignment_requested` used both as the matching trigger *and* as the "we are reassigning" client notification notifies the client *before* a new worker is actually found. If you find one, split it or flag it.
+   If the fan-out cannot be fully determined from the contracts (a consumer's dedup key is undocumented, a topic's subscriber set is unclear), it is **not** a free pass — raise it as an open question and mark the affected YAML lines `# UNCONFIRMED` rather than assuming the fan-out is complete.
+
+   **A single event must not carry two unrelated semantic roles.** One `task.reassignment_requested` used both as the matching trigger *and* as a "we are reassigning" client notification fires the notification *before* a new worker is actually found — that is prohibited, not merely discouraged. Either propose **separate events** (one trigger, one notification emitted only after the outcome is known) or, if you cannot resolve the split yourself, **block the YAML patch** and surface it as an open question. Do not ship a single dual-role event with only a warning attached.
 
 8. **Flag invariants the user must preserve**, citing `service.invariants` and `consistency.cross_service_invariants`.
 
@@ -121,7 +124,7 @@ guessing what is next:
    - One event with two semantic consumers where one is a client notification fired before the outcome is known (step 7).
    - An external trigger with no public-edge entry point, or one that trusts a client-supplied identity (Entry point & ownership).
 
-   Record the outcome as a one-line **Self-review** note in the output (e.g. "self-review: 2 passes — found+fixed premature client notify and a stale dedup key; no remaining findings"). If a finding can't be resolved without the user, raise it as a new open question rather than shipping it.
+   Record the outcome as a one-line note in the output using the literal prefix and shape `Self-review: <N> passes, <what was found and fixed, or "no findings">` — e.g. `Self-review: 2 passes, found+fixed premature client notify and a stale dedup key; no remaining findings`. Always emit this line, even on a clean first pass (`Self-review: 1 pass, no findings`). If a finding can't be resolved without the user, raise it as a new open question rather than shipping it.
 
 10. **End with the full loop, not just sync.** The contract is only safe if code is checked back against it. Spell out the path: apply the YAML edits → `/archspec:sync` → implement → `/archspec:validate` (runs the behavioural linters — outbox, idempotency, optimistic-locking) → `/archspec:check-architecture` for any change that spans more than one service. A green build or passing unit tests is **not** a substitute for `/archspec:validate`: those tests usually cover only the happy path that was just written.
 
