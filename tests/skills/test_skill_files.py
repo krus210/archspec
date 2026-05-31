@@ -150,3 +150,148 @@ def test_investigate_points_to_validation_gate():
     assert "/archspec:check-architecture" in text, (
         "investigate should point to /archspec:check-architecture for cross-service changes"
     )
+
+
+def test_investigate_bridges_findings_to_edge_cases():
+    """Every finding must be materialised as an edge_cases[] entry, not left as
+
+    chat prose. Regression guard for the failure mode where investigate named a
+    join-key risk verbatim (city_id vs free-text city) and the implementation
+    still shipped the wrong field, because the finding lived only in the chat and
+    never reached the plan / the code / a test.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "edge_cases" in low, "investigate must turn findings into edge_cases[] entries"
+    assert "bridge" in low, "the edge_cases step must be framed as the investigate->code bridge"
+    # the bridge only holds because DET-003 forces the test file to exist at commit time
+    assert "det-003" in low, (
+        "the edge_cases bridge must cite DET-003 — that's what blocks the commit until "
+        "the test file exists, which is why an edge_cases entry survives where prose does not"
+    )
+    assert "prose" in low, "the skill must explicitly contrast an edge_cases entry with chat prose"
+
+
+def test_investigate_clarify_splits_identity_trust():
+    """The identity-trust question must be its own clarify dimension, not bundled
+
+    into 'entry point & ownership'. Regression guard for the failure mode where
+    the model answered the entry-point half ('enters via api-gateway') and
+    silently skipped 'where does worker_id come from?', leaving client-supplied
+    identity trusted.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "trusted identity" in low, (
+        "identity-trust must be a first-class clarify dimension, not a clause buried "
+        "inside entry-point & ownership"
+    )
+    assert "checkbox" in low, (
+        "the clarify rules must require every sub-question inside a dimension to be "
+        "treated as its own checkbox, so a bundled half cannot be silently skipped"
+    )
+
+
+def test_investigate_self_review_hunts_reuse_and_atomicity():
+    """The self-review anti-pattern list must cover the design-level bugs that
+
+    investigate itself drew and missed: recompute-instead-of-reuse in a retry
+    loop, attempt identity reconstructed from consumer memory instead of the
+    event payload, two events from one handler that aren't atomic, a notification
+    fired despite a failed state transition, and a terminal guard narrower than
+    the real input states.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "recompute instead of reuse" in low, (
+        "self-review must hunt a retry loop that recomputes an expensive pipeline "
+        "instead of reusing a first-attempt snapshot"
+    )
+    assert "snapshot" in low, "the reuse anti-pattern must name the snapshot that should be reused"
+    assert "consumer memory" in low and "event payload" in low, (
+        "self-review must catch attempt/version identity reconstructed from consumer "
+        "memory instead of carried in the event payload"
+    )
+    assert "same outbox transaction" in low, (
+        "self-review must catch two events from one handler that must be atomic but "
+        "are appended separately"
+    )
+    assert "narrower than the real input states" in low, (
+        "self-review must catch a terminal-state guard tighter than the states the "
+        "entity can actually be in when the branch fires"
+    )
+    assert "state transition and its notification not atomic" in low and "failtask" in low, (
+        "self-review must catch a terminal notification fired even when FailTask "
+        "failed or was swallowed"
+    )
+    assert "first attempt" in low and "initial match finds" in low, (
+        "self-review must catch a first-attempt no-candidates dead-end, not only "
+        "the last retry attempt"
+    )
+
+
+def test_investigate_has_reference_spec_ingest():
+    """investigate must offer to cross-check the design against a reference /
+
+    golden architecture spec. Regression guard for naming-drift and out-of-prompt
+    invariants (canonical event names, 'reuse the snapshot' rules) that the prompt
+    never states and the model otherwise invents.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "reference cross-check" in low, (
+        "investigate output must include a reference cross-check note"
+    )
+    assert "golden architecture spec" in low or "reference / golden" in low, (
+        "investigate should offer to ingest a reference/golden architecture spec"
+    )
+    assert "ask the user **once**" in low and "path provided" in low, (
+        "investigate should ask once for a reference spec and define the path-provided flow"
+    )
+    assert "read it" in low and "conversation context only" in low, (
+        "a supplied reference spec should be read as context, not parsed into the contract"
+    )
+    assert "event/topic names" in low and "rpc names" in low, (
+        "the reference cross-check must include event/topic and RPC names"
+    )
+    assert "dedup/idempotency keys" in low and "invariants" in low, (
+        "the reference cross-check must include dedup/idempotency keys and invariants"
+    )
+    assert "divergence" in low, (
+        "a divergence from the reference spec must be named, not silently renamed away"
+    )
+    # the spec is a hint, never an override — code reality wins on conflict
+    assert "never an override" in low, (
+        "the reference spec must be a hint, never an override of code reality"
+    )
+
+
+def test_investigate_states_definition_of_done():
+    """investigate must spell out a Definition of done so the closing agent does
+
+    not stop at green unit tests. Regression guard for the failure mode where the
+    run ended on a green build and never ran /archspec:validate or
+    /archspec:check-architecture, leaving the contract unchecked against the code.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "definition of done" in low, "investigate must spell out a Definition of done"
+    assert "actually exercises it" in low and "not merely a file that exists" in low, (
+        "the Definition of done must require real edge_cases[] test coverage, not only "
+        "a DET-003 file reference"
+    )
+    assert "/archspec:validate" in low and "exceptions[]" in low, (
+        "the Definition of done must require /archspec:validate or explicit exceptions"
+    )
+    assert "/archspec:check-architecture" in low and "cross-service changes" in low, (
+        "the Definition of done must require /archspec:check-architecture for cross-service work"
+    )
+    assert "# unconfirmed" in low and "adr" in low, (
+        "the Definition of done must require resolving # UNCONFIRMED markers or carrying "
+        "them into edge_cases[] / ADR"
+    )
+    # green unit tests must be explicitly disqualified as 'done'
+    assert "go build" in low and "clears" in low, (
+        "the Definition of done must state that a green go build / go test clears none "
+        "of the validation boxes"
+    )
