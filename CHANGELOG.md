@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-05-31
+
+Hardens `architecture-investigate` against a class of failures observed end-to-end:
+the skill already *found* several cross-service bugs (a `city_id` vs free-text join
+key that "silently collapses the distance tie-breaker", a missing dedup key) — but
+the findings died as chat prose and the implementation shipped them anyway, and the
+post-implementation validation loop was never run. The theme of this release is
+**carry every finding into code, and don't call it done on a green build.**
+
+### Added
+- **Risk → `edge_cases[]` bridge (`architecture-investigate` step 8a).** Every gap,
+  deviation, `# UNCONFIRMED`, and join-key risk the skill surfaces must now be
+  restated as a concrete `edge_cases[]` entry inside the YAML patch (`id` +
+  given/when/then `description` + a `test:` path). This is the bridge that carries a
+  finding into code: an `edge_cases[]` entry **persists in the contract**, renders
+  into `ARCHITECTURE.md` (so the plan-writer and implementation subagents see it
+  without the chat), is **enforced by DET-003** (the commit is blocked until the
+  `test:` file exists), and is protected by DET-007 (no silent removal without an
+  ADR). Closes the failure mode where a verbatim finding ("join on `city_id`, not
+  `city_name`") never reached the code.
+- **Reference / golden architecture spec ingest (step 2a).** investigate now offers
+  to read a reference spec (design doc, RFC, target-state diagram, naming
+  convention) and cross-checks the proposed event names, RPC names, dedup keys, and
+  invariants against it — naming a divergence rather than silently inventing
+  `task.offer_rejected` for a canonical `offer.declined`, or dropping an
+  out-of-prompt invariant like "reassignment reuses the initial match snapshot". The
+  spec is a hint, never an override: code reality wins on conflict.
+- **Definition-of-done checklist (step 10).** investigate now closes with a literal
+  checklist — every `edge_cases[]` entry has a real test, `/archspec:validate` is
+  green, `/archspec:check-architecture` is green for cross-service work, every
+  `# UNCONFIRMED` is resolved — and states that a green `go build` / `go test`
+  clears **none** of these boxes. Closes the failure mode where the run ended on
+  green unit tests in a separate `finishing-a-development-branch` pass and the
+  archspec validation loop was never invoked.
+- **Six new self-review anti-patterns (step 9).** The loop now also hunts, in the
+  skill's *own* draft: recompute-instead-of-reuse in a retry loop (a snapshot that
+  should be reused, not recomputed every attempt); attempt/version identity
+  reconstructed from consumer memory instead of carried in the event payload; two
+  events from one handler appended outside a single outbox transaction; a terminal
+  notification fired despite a failed/swallowed state transition; a terminal guard
+  narrower than the entity's real input states; and a finding still sitting in prose
+  with no `edge_cases[]` entry.
+
+### Changed
+- **`Trusted identity & actor` is now a first-class clarify dimension**, split out of
+  `Entry point & ownership`, with an explicit rule that **every sub-question inside a
+  dimension is its own checkbox**. Closes the failure mode where the model answered
+  the entry-point half ("enters via api-gateway") and silently skipped "where does
+  `worker_id` come from?", leaving client-supplied identity trusted.
+- **`architecture-investigate` output contract** gains three sections: *Reference
+  cross-check*, *Risk register (`edge_cases`)*, and *Definition of done*.
+
+### Notes / known backlog
+- The deeper safety net for two of these bugs is a **behavioural linter**, not just a
+  skill prompt: `AI-008` (redundant-call / re-analysing the same input across retries)
+  and a new **join-key-consistency** linter (catching `city_name` passed where a
+  `city_id` is expected) would catch the `city_id` and recompute regressions
+  automatically in code. Both remain specified-but-unimplemented (`AI-008` in
+  `docs/VALIDATION_RULES.md`); this release strengthens the skill-level guards and the
+  `edge_cases[]` bridge that forces a test, and leaves the Go linters as tracked work.
+
 ## [0.8.0] - 2026-05-31
 
 ### Added
