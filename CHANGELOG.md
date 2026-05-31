@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-05-31
+
+### Added
+- **Async-state & event-ordering dimension in the `architecture-investigate` clarify
+  gate.** The checklist now forces the question: does the trigger read or mutate state
+  that a *different* async path writes, and can the two reorder (trigger before the
+  write lands; a stale/replayed event after the trigger)? Closes the failure mode where
+  a reject path depends on `assigned_worker` set by a separate `match.found` consumer
+  and silently no-ops or resurrects cleared state.
+- **Event/key fan-out trace (step 7).** For every new or changed event and every
+  changed dedup/idempotency/join key, the skill now enumerates *all* producers and
+  consumers — catching a dedup key fixed in one consumer but left stale in another, and
+  dead-end branches that log-and-return without a terminal state or notification. Also
+  flags a single event silently serving two semantic purposes (matching trigger *and*
+  premature client notification).
+- **Self-review loop (step 9).** After drafting the diagram and YAML, the skill re-runs
+  the checklist plus a named anti-pattern list against *its own proposal* (not just the
+  prompt), looping until a clean pass and recording a one-line `Self-review` note.
+
+### Changed
+- `architecture-investigate` clarify checklist sharpened: the **Entry point & ownership**
+  dimension now requires wiring the full reference flow (client → public edge → owner)
+  for external triggers and never trusting a client-supplied identity; **Identity & join
+  keys** now asks what happens when a lookup fails to resolve and whether that failure is
+  silent; **Failure & terminal paths** now demands a terminal for *every* dead-end branch,
+  not just the happy-path failure.
+
 ## [0.7.1] - 2026-05-30
 
 ### Added

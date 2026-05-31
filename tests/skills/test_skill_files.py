@@ -57,6 +57,34 @@ def test_investigate_has_clarify_gate():
         assert dimension in text, f"clarify checklist should cover the '{dimension}' dimension"
 
 
+def test_investigate_covers_async_ordering_and_fanout():
+    """investigate must interrogate async/causal ordering and trace every
+
+    changed event/key across all consumers. Regression guard for the failure
+    modes where the skill modeled only the prompt's happy path and missed: a
+    trigger that races an async write, a dedup key fixed in only one consumer,
+    and a dead-end branch with no terminal state.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8").lower()
+    assert "ordering" in text, "clarify checklist should cover async state & event ordering"
+    assert "producers" in text and "consumers" in text, (
+        "investigate should trace every changed event/key across all producers and consumers"
+    )
+    assert "dead-end" in text, "investigate should force a terminal path for every dead-end branch"
+
+
+def test_investigate_has_self_review_loop():
+    """investigate must re-run its checklist against its own drafted design, not
+
+    just the prompt. Regression guard for architectural details that survive the
+    clarify gate but live in the proposal itself (one event serving two semantic
+    purposes, a silently degrading fallback, an async race).
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8").lower()
+    assert "self-review" in text, "investigate should run a self-review loop on its own draft"
+    assert "anti-pattern" in text, "the self-review loop should hunt named anti-patterns"
+
+
 def test_investigate_points_to_validation_gate():
     """investigate must wire the post-implementation validation gate into its
     closing next step so the behavioural linters actually run."""
