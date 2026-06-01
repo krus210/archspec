@@ -14,6 +14,7 @@ var subcommands = map[string]runner{
 	"optimistic-locking":  RunOptimisticLocking,
 	"swallowed-errors":    RunSwallowedErrors,
 	"redundant-call":      RunRedundantCall,
+	"undeclared-event":    RunUndeclaredEvent,
 }
 
 func main() {
