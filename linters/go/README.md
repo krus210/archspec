@@ -9,6 +9,9 @@ Day-one rule set for `/archspec:validate` against Go services.
 | `handler-idempotency` | AI-001 | BLOCK | endpoint declared `idempotency.required: true` but handler does not read the configured header |
 | `outbox-pattern` | AI-002 | BLOCK | direct `Publish(...)` after `Save(...)` when `consistency.write_path.pattern: outbox` |
 | `optimistic-locking` | AI-003 | BLOCK | UPDATE missing `WHERE <row_version_field> = ?` when an aggregate uses `write_strategy: optimistic` |
+| `swallowed-errors` | AI-007 | BLOCK | `_ = svc.Call(...)` discards a downstream call's error when `dependencies.downstream.sync[].on_failure` is declared |
+| `redundant-call` | AI-008 | WARN | a singular downstream method called inside a loop when a `*Batch` sibling exists (N+1) |
+| `undeclared-event` | AI-009 | BLOCK | NATS `Publish`/`Subscribe` to a topic (literal or const) absent from `events.published`/`events.consumed` |
 
 ## Invocation
 
