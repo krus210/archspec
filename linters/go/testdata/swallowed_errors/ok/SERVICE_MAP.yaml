@@ -1,0 +1,48 @@
+metadata:
+  schema_version: "1.0"
+  source_of_truth: local
+  drift_check_in_ci: true
+  last_reviewed: "2026-06-01"
+service:
+  name: api-gateway
+  team: platform
+  language: go
+  repo: github.com/example/api-gateway
+  domain: gateway
+  ownership:
+    primary: "@alice"
+    oncall: "@oncall"
+  responsibilities:
+    - "route requests to downstream services"
+  invariants:
+    - "all downstream errors must be handled per on_failure policy"
+api:
+  version: 1
+  endpoints: []
+  changelog: []
+dependencies:
+  upstream: []
+  downstream:
+    sync:
+      - service: matching-service
+        on_failure: propagate
+        timeout: "500ms"
+        retries: 0
+        fallback: none
+    async: []
+  storage: []
+events:
+  published: []
+  consumed: []
+consistency:
+  model: eventual
+  bounded_aggregate: gateway
+  write_path:
+    pattern: direct
+  read_path:
+    consistency: eventual
+  cross_service_invariants: []
+concurrency:
+  aggregates: []
+  hot_keys: []
+  shared_state: []
