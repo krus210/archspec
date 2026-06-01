@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-01
+
+Closes a class of failure observed end-to-end: investigate designed a cross-service
+state transition (offer rejection) but never selected the **system-of-record** service
+that owns the state — an orchestrator (`matching-service`) absorbed a transition owned
+by `task-service` via a synchronous RPC, bypassing its outbox and its reassignment
+counter. Theme: **make ownership a forced, reviewable decision, and ship the behavioural
+linters that catch the code-side residue.**
+
+### Added
+- **State-ownership (system-of-record) lens in `architecture-investigate`.** A new
+  clarify dimension forces enumerating every piece of persistent state the change
+  touches and naming its system-of-record service; the write must originate in that
+  service's own write path, never a sync RPC reaching into a foreign aggregate. A new
+  forcing **State-ownership map** artifact (step 8b) makes the decision visible the way
+  the fan-out trace makes event subscribers visible. A foreign-aggregate sync mutation
+  is a named deviation, and ownership findings are first-class `edge_cases[]` entries.
+- **Topology preference: owner-applies-async-command over foreign-aggregate sync RPC**,
+  surfaced both in the clarify gate and the self-review loop.
+- **Self-review anti-patterns:** foreign-state mutation via a sync RPC; idempotency
+  asserted but not traced under replay; N+1 where a batch endpoint exists.
+- **AI-007 `swallowed-errors` (BLOCK)** — flags `_ = svc.Call(...)` that discards a
+  downstream error when `on_failure` is declared.
+- **AI-008 `redundant-call` (WARN)** — flags a singular downstream call inside a loop
+  when a `*Batch` sibling exists (the `GetDistance`/`GetDistancesBatch` N+1).
+- **AI-009 `undeclared-event` (BLOCK, v1 = NATS topics)** — flags Publish/Subscribe to a
+  topic (literal or package-level const) absent from `events.published`/`events.consumed`.
+
+### Changed
+- `ServiceMap` (Go linters) now parses `dependencies.downstream.sync[]` and
+  `events.{published,consumed}[]`.
+- AI-008 severity raised from the reserved `INFO` to `WARN` (conservative matcher).
+
 ## [0.9.0] - 2026-05-31
 
 Hardens `architecture-investigate` against a class of failures observed end-to-end:
