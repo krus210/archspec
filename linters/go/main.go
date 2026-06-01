@@ -13,6 +13,7 @@ var subcommands = map[string]runner{
 	"outbox-pattern":      RunOutboxPattern,
 	"optimistic-locking":  RunOptimisticLocking,
 	"swallowed-errors":    RunSwallowedErrors,
+	"redundant-call":      RunRedundantCall,
 }
 
 func main() {

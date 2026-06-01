@@ -10,6 +10,7 @@ if [[ "${1:-}" == "--list" ]]; then
   echo "outbox-pattern"
   echo "optimistic-locking"
   echo "swallowed-errors"
+  echo "redundant-call"
   exit 0
 fi
 # `go run` requires being inside the module dir. Resolve any relative
