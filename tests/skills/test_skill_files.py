@@ -305,9 +305,13 @@ def test_investigate_forces_state_ownership_map():
     """
     text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
     low = text.lower()
-    assert "state ownership" in low, "investigate needs a 'State ownership (system-of-record)' clarify dimension"
+    assert "state ownership" in low, (
+        "investigate needs a 'State ownership (system-of-record)' clarify dimension"
+    )
     assert "system-of-record" in low, "ownership must be framed by system-of-record"
-    assert "state-ownership map" in low, "investigate output must include a forcing State-ownership map artifact"
+    assert "state-ownership map" in low, (
+        "investigate output must include a forcing State-ownership map artifact"
+    )
     assert "# unconfirmed: foreign-state mutation" in low, (
         "a cross-service write that bypasses the system-of-record must be marked "
         "# UNCONFIRMED: foreign-state mutation"
