@@ -10,7 +10,7 @@ Day-one rule set for `/archspec:validate` against Go services.
 | `outbox-pattern` | AI-002 | BLOCK | direct `Publish(...)` after `Save(...)` when `consistency.write_path.pattern: outbox` |
 | `optimistic-locking` | AI-003 | BLOCK | UPDATE missing `WHERE <row_version_field> = ?` when an aggregate uses `write_strategy: optimistic` |
 | `swallowed-errors` | AI-007 | WARN | `_ = svc.Call(...)` or `resp, _ := svc.Call(...)` discards a downstream call's error when `dependencies.downstream.sync[].on_failure` is declared |
-| `redundant-call` | AI-008 | WARN | a singular downstream method called inside a loop when a `*Batch` sibling exists (N+1) |
+| `redundant-call` | AI-008 | WARN | a singular method called in a loop when a `*Batch` sibling exists in code (potential N+1; code-pattern heuristic, not tied to declared downstream) |
 | `undeclared-event` | AI-009 | WARN | NATS `Publish`/`Subscribe` to a topic (literal or const) absent from `events.published`/`events.consumed` |
 
 ## Invocation

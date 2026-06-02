@@ -30,8 +30,9 @@ linters that catch the code-side residue.**
   discarded via blank `_` (`_ = svc.Call(...)` or `resp, _ := svc.Call(...)`) when
   `on_failure` is declared. WARN, not BLOCK: AST-only, cannot prove the receiver is
   the declared downstream client.
-- **AI-008 `redundant-call` (WARN)** — flags a singular downstream call inside a loop
-  when a `*Batch` sibling exists (the `GetDistance`/`GetDistancesBatch` N+1).
+- **AI-008 `redundant-call` (WARN)** — flags a singular method called inside a loop
+  when a `*Batch` sibling exists in code (the `GetDistance`/`GetDistancesBatch` N+1). Pure
+  code-pattern heuristic — not tied to declared downstream.
 - **AI-009 `undeclared-event` (WARN, v1 = NATS topics)** — flags NATS Publish/Subscribe to
   a topic (literal or package-level const) absent from `events.published`/`events.consumed`.
   WARN, not BLOCK: AST-only (method-name + subject-shape), no receiver-type proof.

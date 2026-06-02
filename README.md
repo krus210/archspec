@@ -177,7 +177,7 @@ See `commands/*.md` for full details.
 
 - AI-001 idempotency · AI-002 outbox bypass · AI-003 optimistic locking
 - AI-004 façade-only violation · AI-005..006 coverage · AI-007 swallowed errors
-- AI-008 redundant fetches · AI-009 undeclared dependency · AI-010 undeclared endpoint
+- AI-008 redundant calls · AI-009 undeclared events · AI-010 undeclared endpoint
 
 </details>
 

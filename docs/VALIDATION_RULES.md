@@ -402,11 +402,15 @@ genuinely fire-and-forget call with an inline `// archspec:ignore AI-007 --
 
 ### AI-008 · Redundant call detection · WARN
 
-Implemented in `linters/go/redundant_call.go`. Flags a downstream singular
-method called inside a `for`/`range` loop when a batch sibling
+Implemented in `linters/go/redundant_call.go`. Flags a singular method
+called inside a `for`/`range` loop when a batch sibling
 (`<Method>Batch`, `<Method>sBatch`, `<Method>esBatch`) appears anywhere in the
 scanned code — e.g. `GetDistance` looped per worker while `GetDistancesBatch`
-is available. Each iteration is a network round-trip the batch call collapses.
+is available. Each iteration is a round-trip the batch call collapses.
+
+This is a pure code-pattern heuristic: it does **not** consult
+`dependencies.downstream`, so it cannot prove the looped call is a downstream
+RPC (it may be any batch-capable operation) — another reason it stays `WARN`.
 
 Severity is `WARN` (raised from the originally-reserved `INFO`): the matcher is
 conservative — it fires only when a concrete batch sibling exists in the code —
