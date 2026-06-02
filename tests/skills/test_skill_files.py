@@ -295,3 +295,47 @@ def test_investigate_states_definition_of_done():
         "the Definition of done must state that a green go build / go test clears none "
         "of the validation boxes"
     )
+
+
+def test_investigate_forces_state_ownership_map():
+    """investigate must force an explicit system-of-record analysis: a clarify
+    dimension for state ownership and a forcing State-ownership map artifact.
+    Regression guard for the failure mode where an orchestrator service absorbed a
+    state transition owned by the aggregate's service (task-service never selected).
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "state ownership" in low, (
+        "investigate needs a 'State ownership (system-of-record)' clarify dimension"
+    )
+    assert "system-of-record" in low, "ownership must be framed by system-of-record"
+    assert "state-ownership map" in low, (
+        "investigate output must include a forcing State-ownership map artifact"
+    )
+    assert "# unconfirmed: foreign-state mutation" in low, (
+        "a cross-service write that bypasses the system-of-record must be marked "
+        "# UNCONFIRMED: foreign-state mutation"
+    )
+
+
+def test_investigate_self_review_hunts_ownership_replay_and_n_plus_1():
+    """The self-review anti-pattern list must hunt the three residual bugs: a sync
+    RPC mutating another aggregate's state, idempotency that breaks under replay, and
+    an N+1 loop where a batch endpoint exists. Plus the topology preference for the
+    owner-applies-async-command shape.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "foreign-state mutation via a sync rpc" in low, (
+        "self-review must hunt a sync RPC that mutates state owned by another service's aggregate"
+    )
+    assert "under replay" in low, (
+        "self-review must trace a literal duplicate invocation (idempotency under replay)"
+    )
+    assert "n+1 where a batch endpoint exists" in low, (
+        "self-review must catch a per-item loop where the downstream exposes a batch endpoint"
+    )
+    assert "owner-applies-async" in low, (
+        "the clarify/self-review must prefer the owner-applies-async-command shape over a "
+        "foreign-aggregate sync mutation"
+    )

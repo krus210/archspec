@@ -30,6 +30,41 @@ func TestLoadServiceMap_MissingFile(t *testing.T) {
 	}
 }
 
+func TestLoadServiceMap_ParsesDownstreamAndEvents(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "SERVICE_MAP.yaml")
+	yaml := `service:
+  name: matching-service
+  language: go
+dependencies:
+  downstream:
+    sync:
+      - service: geo-service
+        on_failure: degrade-gracefully
+events:
+  published:
+    - topic: match.found
+  consumed:
+    - topic: task.created
+`
+	if err := os.WriteFile(p, []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sm, err := LoadServiceMap(p)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(sm.Dependencies.Downstream.Sync) != 1 || sm.Dependencies.Downstream.Sync[0].OnFailure != "degrade-gracefully" {
+		t.Errorf("downstream sync not parsed: %+v", sm.Dependencies.Downstream.Sync)
+	}
+	if len(sm.Events.Published) != 1 || sm.Events.Published[0].Topic != "match.found" {
+		t.Errorf("events.published not parsed: %+v", sm.Events.Published)
+	}
+	if len(sm.Events.Consumed) != 1 || sm.Events.Consumed[0].Topic != "task.created" {
+		t.Errorf("events.consumed not parsed: %+v", sm.Events.Consumed)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	wd, _ := os.Getwd()

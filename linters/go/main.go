@@ -12,6 +12,9 @@ var subcommands = map[string]runner{
 	"handler-idempotency": RunHandlerIdempotency,
 	"outbox-pattern":      RunOutboxPattern,
 	"optimistic-locking":  RunOptimisticLocking,
+	"swallowed-errors":    RunSwallowedErrors,
+	"redundant-call":      RunRedundantCall,
+	"undeclared-event":    RunUndeclaredEvent,
 }
 
 func main() {

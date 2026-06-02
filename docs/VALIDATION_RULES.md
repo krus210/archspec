@@ -379,48 +379,70 @@ validate the test signature.
 
 Until shipped, treat scenario coverage as a release-checklist item.
 
-### AI-007 · Swallowed downstream errors · BLOCK
+### AI-007 · Swallowed downstream errors · WARN
 
-Specified in the design but **not yet implemented in `linters/go/`**.
-The intended behavior: for every entry in
-`dependencies.downstream.sync[]` with `on_failure` set, scan the
-calling code for the pattern `_ = svc.Call(...)` (or its idiomatic
-equivalents) and block when the error is dropped.
+Implemented in `linters/go/swallowed_errors.go`. When at least one
+`dependencies.downstream.sync[]` entry declares an `on_failure` policy, the
+linter flags a method call whose return is discarded via a blank `_` — both the
+fully-discarded form (`_ = recv.Method(...)`) and the common partial form
+(`resp, _ := recv.Method(...)`, error position blanked).
 
-Today the policy is documented but unenforced. PR reviewers should
-flag dropped errors manually.
+Severity is `WARN`, not `BLOCK`: the matcher is AST-only and cannot prove the
+receiver is one of the declared downstream clients (vs a local logger/metrics
+helper), so it advises rather than blocks. Receiver-type resolution that would
+justify `BLOCK` is a planned extension.
 
-When the rule ships, fix by handling the error explicitly per the
-declared `on_failure` policy (`degrade`, `fail`, `retry`). Suppress
-with an inline pragma when the error is intentionally non-fatal (e.g.
-fire-and-forget logging).
+Common failures: a fire-and-forget call that should propagate or degrade; a
+refactor that dropped the `if err != nil` after a downstream call.
 
-### AI-008 · Redundant call detection · INFO
+Fix: capture the error and handle it per the declared `on_failure`
+(`propagate`, `fail-open`, `fail-closed`, `degrade-gracefully`). Suppress a
+genuinely fire-and-forget call with an inline `// archspec:ignore AI-007 --
+<reason>` pragma, or an `exceptions[]` entry for a durable case.
 
-Specified in the design but **not yet implemented in `linters/go/`**.
-Intended behavior: detect N+1 patterns where a batch method exists, or
-the same entity fetched twice in one flow. Severity is `INFO` because
-the rule is heuristic and the cost-benefit varies.
+### AI-008 · Redundant call detection · WARN
 
-Today there is no enforcement. The rule is documented so that future
-contributors can reserve the id and so users can plan
-`<lang>_extensions` configuration around it.
+Implemented in `linters/go/redundant_call.go`. Flags a singular method
+called inside a `for`/`range` loop when a batch sibling
+(`<Method>Batch`, `<Method>sBatch`, `<Method>esBatch`) appears anywhere in the
+scanned code — e.g. `GetDistance` looped per worker while `GetDistancesBatch`
+is available. Each iteration is a round-trip the batch call collapses.
 
-### AI-009 · Undeclared dependency · BLOCK
+This is a pure code-pattern heuristic: it does **not** consult
+`dependencies.downstream`, so it cannot prove the looped call is a downstream
+RPC (it may be any batch-capable operation) — another reason it stays `WARN`.
 
-Specified in the design but **not yet implemented in `linters/go/`**.
-The intended behavior: scan code for calls to services, topics, or
-databases not present in the YAML's `dependencies` or `events` blocks.
+Severity is `WARN` (raised from the originally-reserved `INFO`): the matcher is
+conservative — it fires only when a concrete batch sibling exists in the code —
+so the signal is reliable enough to surface in the report, while staying
+non-blocking because batching is a performance choice, not a correctness one.
 
-Today, undeclared dependencies are caught by reviewers reading the
-generated `ARCHITECTURE.md` (which lists exactly what the YAML
-declares; missing entries are visible by absence). When the linter
-ships it will provide line-level evidence.
+Fix: collect the inputs in the loop and call the batch method once afterwards.
+Suppress with an inline `// archspec:ignore AI-008 -- <reason>` pragma when the
+per-item call is intentional (e.g. early-exit on the first match).
 
-To prepare, keep `dependencies` and `events` exhaustive. The pre-push
-drift check (`hooks/pre-push/check_drift.py`) already enforces
-consistency between the YAML and the generated diagrams; adding a code
-scan closes the remaining gap.
+### AI-009 · Undeclared event · WARN
+
+Implemented in `linters/go/undeclared_event.go` (v1 scope: **NATS topics**).
+Detects `Publish`, `Subscribe`, and `QueueSubscribe` calls whose first argument
+resolves to a concrete string — a literal or a package-level string `const`
+(so `natsSubjectTaskFailed = "task.failed"` resolves) — and that is shaped like
+a NATS subject. A published topic absent from `events.published[].topic`, or a
+subscribed topic absent from `events.consumed[].topic`, is flagged.
+
+Severity is `WARN`, not `BLOCK`: the matcher keys on the method name
+(`Publish`/`Subscribe`/`QueueSubscribe`) and the subject shape but is AST-only
+and does not verify the receiver is an actual NATS client, so a non-NATS
+publisher with a topic-shaped argument is not hard-blocked. A subject built at
+runtime or a non-subject-shaped string is skipped rather than guessed.
+
+Planned extension (not in v1): service-level detection (gRPC `New<Svc>Client`
+vs `dependencies.downstream`), database dependencies, and Kafka topic
+resolution (the topic hides in a writer-config struct field).
+
+Fix: declare the topic in `events.published` / `events.consumed`, or stop
+emitting/consuming it. Suppress a deliberate reply-subject with an inline
+`// archspec:ignore AI-009 -- <reason>` pragma.
 
 ### AI-010 · Undeclared endpoint · BLOCK
 

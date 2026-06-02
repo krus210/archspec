@@ -27,6 +27,15 @@ type ServiceMap struct {
 		OptimisticLockingField string `yaml:"optimistic_locking_field"`
 		OutboxTable            string `yaml:"outbox_table"`
 	} `yaml:"go_extensions"`
+	Dependencies struct {
+		Downstream struct {
+			Sync []SyncDep `yaml:"sync"`
+		} `yaml:"downstream"`
+	} `yaml:"dependencies"`
+	Events struct {
+		Published []EventDecl `yaml:"published"`
+		Consumed  []EventDecl `yaml:"consumed"`
+	} `yaml:"events"`
 	Path string `yaml:"-"`
 }
 
@@ -45,6 +54,15 @@ type Idempotency struct {
 type Aggregate struct {
 	Name          string `yaml:"name"`
 	WriteStrategy string `yaml:"write_strategy"`
+}
+
+type SyncDep struct {
+	Service   string `yaml:"service"`
+	OnFailure string `yaml:"on_failure"`
+}
+
+type EventDecl struct {
+	Topic string `yaml:"topic"`
 }
 
 func LoadServiceMap(path string) (*ServiceMap, error) {

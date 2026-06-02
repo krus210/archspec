@@ -9,6 +9,9 @@ if [[ "${1:-}" == "--list" ]]; then
   echo "handler-idempotency"
   echo "outbox-pattern"
   echo "optimistic-locking"
+  echo "swallowed-errors"
+  echo "redundant-call"
+  echo "undeclared-event"
   exit 0
 fi
 # `go run` requires being inside the module dir. Resolve any relative
