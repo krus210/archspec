@@ -38,11 +38,15 @@ func RunSwallowedErrors(sm *ServiceMap, codeRoot string) ([]Finding, error) {
 			if !ok || len(as.Lhs) == 0 || len(as.Rhs) != 1 {
 				return true
 			}
+			anyBlank := false
 			for _, lhs := range as.Lhs {
-				id, ok := lhs.(*ast.Ident)
-				if !ok || id.Name != "_" {
-					return true
+				if id, ok := lhs.(*ast.Ident); ok && id.Name == "_" {
+					anyBlank = true
+					break
 				}
+			}
+			if !anyBlank {
+				return true
 			}
 			call, ok := as.Rhs[0].(*ast.CallExpr)
 			if !ok {
@@ -54,11 +58,11 @@ func RunSwallowedErrors(sm *ServiceMap, codeRoot string) ([]Finding, error) {
 			}
 			pos := fset.Position(as.Pos())
 			findings = append(findings, Finding{
-				Rule: "AI-007", Severity: "BLOCK",
+				Rule: "AI-007", Severity: "WARN",
 				File:         relPath(pos.Filename, codeRoot),
 				Line:         pos.Line,
 				ContractRef:  sm.Path + " — dependencies.downstream.sync[].on_failure",
-				Message:      "downstream call " + selName(sel) + " discards its return (including the error) with _",
+				Message:      "call " + selName(sel) + " discards a return value via `_` — a downstream error may be swallowed",
 				SuggestedFix: "capture the error and handle it per the declared on_failure policy",
 			})
 			return true

@@ -22,8 +22,8 @@ func TestRunUndeclaredEventSubcommand(t *testing.T) {
 	if !strings.Contains(stdout, "task.failed") {
 		t.Errorf("bad: message should name the undeclared topic, got: %s", stdout)
 	}
-	if !strings.Contains(stdout, `"severity":"BLOCK"`) {
-		t.Errorf("bad: expected BLOCK severity, got: %s", stdout)
+	if !strings.Contains(stdout, `"severity":"WARN"`) {
+		t.Errorf("bad: expected WARN severity, got: %s", stdout)
 	}
 	if !strings.Contains(stdout, "task.unknown") {
 		t.Errorf("bad: expected the undeclared subscribe topic task.unknown, got: %s", stdout)

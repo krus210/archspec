@@ -26,12 +26,15 @@ linters that catch the code-side residue.**
   surfaced both in the clarify gate and the self-review loop.
 - **Self-review anti-patterns:** foreign-state mutation via a sync RPC; idempotency
   asserted but not traced under replay; N+1 where a batch endpoint exists.
-- **AI-007 `swallowed-errors` (BLOCK)** — flags `_ = svc.Call(...)` that discards a
-  downstream error when `on_failure` is declared.
+- **AI-007 `swallowed-errors` (WARN)** — flags a downstream call whose return is
+  discarded via blank `_` (`_ = svc.Call(...)` or `resp, _ := svc.Call(...)`) when
+  `on_failure` is declared. WARN, not BLOCK: AST-only, cannot prove the receiver is
+  the declared downstream client.
 - **AI-008 `redundant-call` (WARN)** — flags a singular downstream call inside a loop
   when a `*Batch` sibling exists (the `GetDistance`/`GetDistancesBatch` N+1).
-- **AI-009 `undeclared-event` (BLOCK, v1 = NATS topics)** — flags Publish/Subscribe to a
-  topic (literal or package-level const) absent from `events.published`/`events.consumed`.
+- **AI-009 `undeclared-event` (WARN, v1 = NATS topics)** — flags NATS Publish/Subscribe to
+  a topic (literal or package-level const) absent from `events.published`/`events.consumed`.
+  WARN, not BLOCK: AST-only (method-name + subject-shape), no receiver-type proof.
 
 ### Changed
 - `ServiceMap` (Go linters) now parses `dependencies.downstream.sync[]` and

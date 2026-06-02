@@ -101,7 +101,7 @@ func RunUndeclaredEvent(sm *ServiceMap, codeRoot string) ([]Finding, error) {
 			}
 			pos := fset.Position(call.Pos())
 			findings = append(findings, Finding{
-				Rule: "AI-009", Severity: "BLOCK",
+				Rule: "AI-009", Severity: "WARN",
 				File:         relPath(pos.Filename, codeRoot),
 				Line:         pos.Line,
 				ContractRef:  sm.Path + " — events." + dir,

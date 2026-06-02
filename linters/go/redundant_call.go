@@ -58,7 +58,7 @@ func RunRedundantCall(sm *ServiceMap, codeRoot string) ([]Finding, error) {
 					Rule: "AI-008", Severity: "WARN",
 					File:         relPath(pos.Filename, codeRoot),
 					Line:         pos.Line,
-					ContractRef:  sm.Path + " — dependencies.downstream (batch method available)",
+					ContractRef:  sm.Path + " — AI-008: a batch-capable method exists for this per-item loop call",
 					Message:      "call to " + sel.Sel.Name + "() inside a loop while batch method " + batch + "() exists — N+1 round-trips",
 					SuggestedFix: "collect inputs and call " + batch + "() once outside the loop",
 				})

@@ -379,12 +379,18 @@ validate the test signature.
 
 Until shipped, treat scenario coverage as a release-checklist item.
 
-### AI-007 · Swallowed downstream errors · BLOCK
+### AI-007 · Swallowed downstream errors · WARN
 
 Implemented in `linters/go/swallowed_errors.go`. When at least one
 `dependencies.downstream.sync[]` entry declares an `on_failure` policy, the
-linter flags every `_ = recv.Method(...)` blank-assignment of a method call —
-the returned error (and all other results) is silently discarded.
+linter flags a method call whose return is discarded via a blank `_` — both the
+fully-discarded form (`_ = recv.Method(...)`) and the common partial form
+(`resp, _ := recv.Method(...)`, error position blanked).
+
+Severity is `WARN`, not `BLOCK`: the matcher is AST-only and cannot prove the
+receiver is one of the declared downstream clients (vs a local logger/metrics
+helper), so it advises rather than blocks. Receiver-type resolution that would
+justify `BLOCK` is a planned extension.
 
 Common failures: a fire-and-forget call that should propagate or degrade; a
 refactor that dropped the `if err != nil` after a downstream call.
@@ -411,7 +417,7 @@ Fix: collect the inputs in the loop and call the batch method once afterwards.
 Suppress with an inline `// archspec:ignore AI-008 -- <reason>` pragma when the
 per-item call is intentional (e.g. early-exit on the first match).
 
-### AI-009 · Undeclared dependency · BLOCK
+### AI-009 · Undeclared event · WARN
 
 Implemented in `linters/go/undeclared_event.go` (v1 scope: **NATS topics**).
 Detects `Publish`, `Subscribe`, and `QueueSubscribe` calls whose first argument
@@ -420,9 +426,11 @@ resolves to a concrete string — a literal or a package-level string `const`
 a NATS subject. A published topic absent from `events.published[].topic`, or a
 subscribed topic absent from `events.consumed[].topic`, is flagged.
 
-The matcher is deliberately conservative to keep BLOCK trustworthy: a subject
-built at runtime (non-resolvable expression) or a non-subject-shaped string is
-skipped rather than guessed.
+Severity is `WARN`, not `BLOCK`: the matcher keys on the method name
+(`Publish`/`Subscribe`/`QueueSubscribe`) and the subject shape but is AST-only
+and does not verify the receiver is an actual NATS client, so a non-NATS
+publisher with a topic-shaped argument is not hard-blocked. A subject built at
+runtime or a non-subject-shaped string is skipped rather than guessed.
 
 Planned extension (not in v1): service-level detection (gRPC `New<Svc>Client`
 vs `dependencies.downstream`), database dependencies, and Kafka topic

@@ -19,11 +19,11 @@ func TestRunSwallowedErrorsSubcommand(t *testing.T) {
 	if !strings.Contains(stdout, `"rule":"AI-007"`) {
 		t.Errorf("bad: expected AI-007 finding, got: %s", stdout)
 	}
-	if !strings.Contains(stdout, `"severity":"BLOCK"`) {
-		t.Errorf("bad: expected BLOCK severity, got: %s", stdout)
+	if !strings.Contains(stdout, `"severity":"WARN"`) {
+		t.Errorf("bad: expected WARN severity, got: %s", stdout)
 	}
-	if !strings.Contains(stdout, "RejectOffer") {
-		t.Errorf("bad: message should name the swallowed call, got: %s", stdout)
+	if !strings.Contains(stdout, "RejectOffer") || !strings.Contains(stdout, "Fetch") {
+		t.Errorf("bad: should flag both `_ = c.RejectOffer(...)` and `data, _ := c.Fetch(...)`, got: %s", stdout)
 	}
 
 	ok := filepath.Join("testdata", "swallowed_errors", "ok")
