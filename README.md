@@ -74,7 +74,8 @@ end, and those artifacts stay in the repo.
 |---|---|
 | `/archspec:init` / `architecture-sync` bootstrap | `docs/SERVICE_MAP.yaml`, `docs/diagrams/{context,container,sequence}.mmd`, generated `docs/ARCHITECTURE.md`, `.servicemap/schema.json`, `docs/adr/`, installed git hooks, and the archspec block in `CLAUDE.md` |
 | `/archspec:sync` / `architecture-sync` | Regenerated Mermaid diagrams and the managed region of `docs/ARCHITECTURE.md` |
-| `/archspec:investigate` / `architecture-investigate` | Read-only contract summary, clarification questions, an optional cross-check against a reference/golden spec, chat-only Mermaid for the proposed change, a YAML diff to apply before coding — including an `edge_cases[]` risk register that turns every finding into a DET-003-enforced test path — and a definition-of-done + validation loop to run after implementation |
+| `/archspec:investigate` / `architecture-investigate` | Read-only contract summary, clarification questions, an optional cross-check against a reference/golden spec, a chat-only sequence diagram for the proposed change, a YAML diff to apply before coding — including an `edge_cases[]` risk register that turns every finding into a DET-003-enforced test path — plus a persisted `docs/plans/*.archplan.md` artifact reviewed by an independent plan-review gate, and a definition-of-done + validation loop to run after implementation |
+| `/archspec:implement` / `architecture-implement` | Contract edits applied + re-synced docs, a coding plan with an archplan↔task conformance table, the implemented change, five conformance passes (wiring, event emission, end-to-end field threading, dedup atomicity, requirement evidence), green `/archspec:validate` + `/archspec:check-architecture`, and an independent diff review |
 | `/archspec:validate` | Markdown report grouped by `BLOCK` / `WARN` / `INFO` / `SUPPRESSED`, with file references and fix hints |
 | `/archspec:check-architecture` | Monorepo-wide architecture audit across all `SERVICE_MAP.yaml` files |
 
@@ -150,7 +151,9 @@ If the service is not Go, or the scanner finds nothing, `init` falls back to a f
 | `/archspec:init` | Bootstrap a new service |
 | `/archspec:sync` | Regenerate Mermaid + ARCHITECTURE.md from `SERVICE_MAP.yaml` |
 | `/archspec:validate` | Run the AI rules and produce a markdown report |
-| `/archspec:investigate` | Pre-feature workflow: read contract, propose YAML changes inline |
+| `/archspec:investigate` | Pre-feature workflow: read contract, propose YAML changes inline, persist a reviewed `.archplan.md` |
+| `/archspec:implement` | Implement an `.archplan.md`: contracts → coding plan → TDD → conformance passes → validate |
+| `/archspec:check-architecture` | Monorepo-wide audit across all `SERVICE_MAP.yaml` files |
 
 See `commands/*.md` for full details.
 
@@ -159,7 +162,8 @@ See `commands/*.md` for full details.
 | Skill | Triggers when | Produces |
 |---|---|---|
 | `architecture-sync` | After Edit on `SERVICE_MAP.yaml`; phrases like "regenerate diagram", "service map drift" | Validated `SERVICE_MAP.yaml`, refreshed Mermaid diagrams, refreshed `ARCHITECTURE.md`, staged generated artifacts |
-| `architecture-investigate` | Phrases like "let's add X", "investigate Y", "understand how Z works" | Read-only architecture slice, clarification gate, optional reference-spec cross-check, change-only Mermaid, proposed YAML diff with an `edge_cases[]` risk register, self-review loop, definition-of-done + validation checklist |
+| `architecture-investigate` | Phrases like "let's add X", "investigate Y", "understand how Z works" | Read-only architecture slice, clarification gate, optional reference-spec cross-check, change-only sequence diagram, proposed YAML diff with an `edge_cases[]` risk register, self-review loop, persisted `.archplan.md` + independent plan-review gate, definition-of-done + validation checklist |
+| `architecture-implement` | An `.archplan.md` exists and the user says "implement the plan", "build it" | Applied contract edits, coding plan with conformance table, TDD implementation, five conformance passes, green validate/check-architecture, independent diff review |
 
 ## What gets validated
 

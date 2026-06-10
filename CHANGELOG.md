@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-10
+
+Closes the pipeline gaps that let the task_3 run ship four critical bugs with green
+unit tests: the plan drifted from the investigation (topology flipped to sync RPC, an
+invented downstream method, dropped snapshot reuse) and the code drifted from the plan
+(nil-wired gateway, a declared event with no emit site on the reassignment path, a new
+field that never reached the public edge, dedup marked before its side effects) — and
+no checkpoint caught either drift. Theme: **persist the plan, review it independently,
+and prove plan↔code conformance before calling the work done.**
+
+### Added
+- **`/archspec:implement` + `architecture-implement` skill** — the write-side
+  counterpart of investigate. Consumes the `.archplan.md` artifact (refuses without
+  one), applies the YAML patch and re-syncs generated docs *before* coding, writes a
+  coding plan with a **conformance table** (archplan element → task → test) and a
+  **method-existence gate** (every downstream call greps to a real contract/proto
+  method), implements with TDD, then runs five **conformance passes** targeting the
+  task_3 bug classes: nil-wiring in composition roots, declared events without emit
+  sites, new fields not threaded end-to-end (incl. seeds/fixtures), dedup marked
+  before side effects, and a requirement→file:line evidence table. Finishes with
+  monorepo `/archspec:validate` + `/archspec:check-architecture` and an independent
+  fresh-context diff review (`Implement-review: CLEAN after <N> round(s)`). Commits,
+  never pushes.
+- **Persisted archplan artifact in `architecture-investigate` (step 9b)** — the full
+  output contract is written to `docs/plans/<date>-<slug>.archplan.md`, the only file
+  the skill writes. The plan-writer and implementation subagents read files, not chat
+  history; in task_3 the topology flip happened precisely because the investigation
+  lived only in conversation.
+- **Independent plan-review gate (step 9c)** — a fresh-context reviewer subagent
+  adversarially grades the archplan against a 10-point rubric (requirement trace, no
+  invented methods, reuse-vs-recompute, batch endpoints, topology & ownership,
+  end-to-end field threading incl. seeds, dedup & atomicity, no surviving
+  `# UNCONFIRMED`, terminal branches, diagram↔YAML conformance). REVISE loops are
+  bounded at 3 rounds, then findings escalate to the user. Always emits
+  `Plan-review: APPROVED after <N> round(s), <summary>`.
+
+### Changed
+- **The investigate change diagram is now a `sequenceDiagram`** (sync `->>` vs async
+  `-)`, `alt`/`else` for every terminal branch, `%% new` markers); a flowchart is
+  allowed only for intra-service branch logic. A flowchart hides exactly what the
+  reviews flagged: who calls whom, sync vs async, and where branches terminate.
+- **`/archspec:validate` is monorepo-aware** — discovers every `*/docs/SERVICE_MAP.yaml`
+  (no root-contract assumption), runs the per-language linters per service with that
+  service's contract and code dir, and groups the report per service with one combined
+  summary line.
+- **Plugin assets resolve via `ARCHSPEC_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}"`**
+  in `validate`, `check-architecture`, and `architecture-sync` — when archspec runs as
+  an installed plugin, `CLAUDE_PROJECT_DIR` points at the consumer repo, which has no
+  `bin/`, `hooks/`, or `linters/`.
+- `architecture-sync` documents the monorepo discipline: sync runs from each service's
+  directory; only check-architecture runs from the repo root.
+
 ## [0.10.0] - 2026-06-01
 
 Closes a class of failure observed end-to-end: investigate designed a cross-service
