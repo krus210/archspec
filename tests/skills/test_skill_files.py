@@ -471,3 +471,60 @@ def test_implement_has_conformance_gates():
     assert "do not push" in low or "without pushing" in low or "no push" in low, (
         "implement commits but never pushes"
     )
+
+
+def test_plan_review_enforces_per_attempt_identity():
+    """task_5 shipped the task_1 bug again: matching reused the same MatchID in
+    the reassignment match.found and notification deduped on MatchID — the
+    re-offer was swallowed as a duplicate. The plan even said "dedup on MatchID
+    remains, no key change" and self-review approved it. The rubric must name
+    the rule explicitly: an ID reused across retry attempts must either be
+    regenerated per attempt or be part of EVERY consumer's dedup key.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "reused across" in low and "attempt" in low, (
+        "plan-review rubric must call out identifiers reused across retry attempts"
+    )
+    assert "regenerated per attempt" in low or "new per attempt" in low, (
+        "the fix options must be named: regenerate per attempt, or attempt-qualify "
+        "every consumer's dedup key"
+    )
+
+
+def test_review_gates_mark_solo_degradation():
+    """When the executing agent cannot dispatch subagents, the 'independent
+    fresh-context review' silently degrades to self-review — in task_5 that
+    degraded gate approved the critical bug. The degradation must be visible:
+    a SELF-ONLY verdict marker in both gates.
+    """
+    inv = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    imp = (SKILLS / "architecture-implement" / "SKILL.md").read_text(encoding="utf-8")
+    assert "SELF-ONLY" in inv, (
+        "investigate step 9c must mark a solo (no-subagent) review as SELF-ONLY"
+    )
+    assert "SELF-ONLY" in imp, (
+        "implement phase G must mark a solo (no-subagent) review as SELF-ONLY"
+    )
+
+
+def test_implement_conformance_passes_cover_task5_bug_classes():
+    """Three HIGHs in task_5 slipped through the conformance passes because the
+    passes did not name them: a gRPC client default pointing at another
+    service's port; a documented public route that the router never matches;
+    and a replayed second-attempt event swallowed by a consumer's dedup key.
+    """
+    text = (SKILLS / "architecture-implement" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "port" in low and ("address" in low or "addr" in low), (
+        "wiring pass must verify client default addresses/ports against the target "
+        "service's actual listen port"
+    )
+    assert "router" in low and "string-for-string" in low, (
+        "threading pass must require declared public routes to match the router "
+        "registration string-for-string"
+    )
+    assert "second-attempt" in low or "second attempt" in low, (
+        "dedup pass must trace a literal second-attempt event through every "
+        "consumer's dedup logic"
+    )

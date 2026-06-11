@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-06-11
+
+Closes the bug classes the task_5 (solo-agent) run shipped past the v0.11.0 gates:
+a reassignment `match.found` swallowed because the match id was reused across
+attempts while a consumer deduped on it; a gRPC client defaulting to another
+service's port; a documented route the router never matched; and an "independent"
+review silently degraded to self-review because the agent could not dispatch
+subagents.
+
+### Changed
+- **Plan-review rubric (investigate step 9c)**: per-attempt identity rule — any ID
+  reused across retry/reassignment attempts must be regenerated per attempt or be
+  part of every consumer's dedup key; "dedup on <ID> remains, no key change" in a
+  retry loop is a REVISE.
+- **Implement conformance passes**: wiring pass now verifies client default
+  addresses/ports against the target service's actual listen port; threading pass
+  requires declared public routes to match the router registration string-for-string
+  (proved by a handler test on the documented path); dedup pass traces a literal
+  second-attempt event through every consumer's dedup logic.
+- **Solo degradation made visible**: when the executing agent cannot dispatch
+  subagents, both gates must emit `Plan-review: SELF-ONLY ...` /
+  `Implement-review: SELF-ONLY ...` instead of APPROVED/CLEAN.
+
 ## [0.11.0] - 2026-06-10
 
 Closes the pipeline gaps that let the task_3 run ship four critical bugs with green

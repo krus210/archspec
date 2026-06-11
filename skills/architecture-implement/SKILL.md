@@ -76,10 +76,13 @@ creating the file.
 Run each pass over the full diff. Each one targets a bug class that shipped in task_3
 with green tests. Record the evidence inline; a pass with no evidence is not done.
 
-1. **Wiring pass — no nil dependencies.** Open every touched composition root
-   (`main.go` / DI container). Every constructor argument for a declared dependency is
-   a real client, never `nil` / a placeholder. Unit tests stub these, so only this pass
-   catches a nil-wired gateway that panics on the first real event.
+1. **Wiring pass — no nil dependencies, no wrong addresses.** Open every touched
+   composition root (`main.go` / DI container). Every constructor argument for a
+   declared dependency is a real client, never `nil` / a placeholder. Then verify every
+   new client's **default address/port against the target service's actual listen
+   port** (its `main.go` / deploy config) — a geo client defaulting to another
+   service's port compiles, passes unit tests, and dials the wrong service in every
+   real environment. Unit tests stub these, so only this pass catches both.
 2. **Emission pass — every declared event has an emit site.** For each
    `events.published[]` entry in every touched contract, grep the service code for the
    topic string and confirm a publish/outbox append on **every** path the archplan
@@ -89,12 +92,19 @@ with green tests. Record the evidence inline; a pass with no evidence is not don
    field added to a model/proto: public entry (gateway proto, HTTP body), the owner's
    write path, every event payload that carries it, every consumer that reads it, and
    the **seed/fixture data** — a field the seeds never populate is dead in every demo
-   and test environment.
+   and test environment. For each new public route: the path declared in the contract
+   must match the router registration **string-for-string** (`/decline-offer` declared
+   but only `/decline` routed is a documented endpoint that 404s); prove it with a
+   handler test that hits the documented path.
 4. **Dedup pass — marking is atomic with or after the side effects, never before the
    side effects.** Trace each consumer: if the dedup key is recorded first and a later
    step fails, redelivery is silently swallowed (at-least-once degrades to
    at-most-once). Require CAS/outbox-style "mark completed with the result", or
-   marking after the effects.
+   marking after the effects. Then trace a **literal second-attempt event** (the
+   reassignment/retry copy, not a duplicate) through every consumer's dedup logic: an
+   identifier reused across attempts (a match id) with a consumer deduping on that ID
+   swallows the retry as a "duplicate" — the ID must be regenerated per attempt or the
+   key must include the attempt, in **every** consumer.
 5. **Evidence pass — requirement → file:line.** Re-read the original task. For every
    stated requirement, write one line: requirement → `file:line` that implements it →
    test that proves it. A requirement you cannot point into the diff is unimplemented,
@@ -118,6 +128,11 @@ batch usage, snapshot reuse, terminal branches) and returns CRITICAL/MAJOR/MINOR
 findings with file:line. Fix every CRITICAL and MAJOR, then re-dispatch a fresh
 reviewer. Loop until zero CRITICAL findings. Emit the literal line
 `Implement-review: CLEAN after <N> round(s), <summary>`.
+
+**Solo degradation is not CLEAN.** If you cannot dispatch subagents, re-reading your
+own diff is not an independent review — walk the passes anyway, but emit
+`Implement-review: SELF-ONLY after <N> pass(es), <summary>` so the degradation stays
+visible to the human and to any later review stage.
 
 ## Phase H — Finish
 
