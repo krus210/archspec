@@ -5,12 +5,13 @@ description: Use before non-trivial feature or bugfix work — phrases like "let
 
 # architecture-investigate
 
-Read-side workflow. Never modifies files. Produces:
+Read-side workflow. Read-only for code and contracts — the **only file** it writes is the persisted plan artifact `docs/plans/<date>-<slug>.archplan.md` (step 9b). Produces:
 
 1. A short summary of the relevant slice of `SERVICE_MAP.yaml`.
 2. Clarifying questions for every ambiguity the prompt and the contract do not already settle.
-3. An inline Mermaid diagram showing **only the change** the user is proposing.
+3. An inline Mermaid sequence diagram showing **only the change** the user is proposing.
 4. A bulleted list of YAML edits the user should make before writing code.
+5. A persisted, independently-reviewed plan artifact that `/archspec:implement` consumes.
 
 ## Output contract
 
@@ -20,15 +21,17 @@ guessing what is next:
 - **Contract slice** — 5-8 lines citing exact field paths from `docs/SERVICE_MAP.yaml`.
 - **Reference cross-check** — when a reference/golden architecture spec was supplied, a short note on where the proposed event names, RPC names, dedup keys, and invariants agree with or deviate from it. Deviations are called out, never silently renamed away.
 - **Open questions** — only the ambiguity dimensions not already answered by the prompt or contract.
-- **Change diagram** — chat-only Mermaid, scoped to the proposed change, with new or changed nodes marked `:::new`.
+- **Change diagram** — chat-only Mermaid **`sequenceDiagram`** scoped to the proposed change (sync `->>` vs async `-)` arrows, `alt`/`else` for terminal branches, new interactions marked `%% new`); a flowchart only for intra-service branch logic.
 - **YAML patch** — unified-diff snippet the user can apply before coding; no files are edited by this skill.
 - **Event/key fan-out** — from a scan of the full `SERVICE_MAP.yaml` set, the complete list of producers and consumers for each new or changed event and dedup/join key, with each dead-end branch's terminal state + notification; undetermined fan-out marked `# UNCONFIRMED`.
 - **Invariant/deviation notes** — explicit callouts when the proposal touches ownership, write path, or declared invariants.
 - **State-ownership map** — a table with one row per piece of persistent state the change creates, mutates, or transitions: `State touched | System-of-record service | Where it lives (domain/aggregate) | Write originates via | Deviation?`. Emitted whenever the change touches persistent state; it is the forcing artifact for the State ownership clarify dimension, the same way the fan-out trace forces every event subscriber to be named.
 - **Risk register (`edge_cases`)** — every gap, deviation, `# UNCONFIRMED`, and join-key risk surfaced above, restated as a concrete `edge_cases[]` entry inside the YAML patch (`id` + a `description` that carries the given/when/then + a `test:` path). This is the bridge that carries a finding into code: a sentence in chat is forgotten the moment the plan step takes over, but an `edge_cases[]` entry persists in the contract and DET-003 blocks the commit until its test file exists.
 - **Self-review** — one line in the literal shape `Self-review: <N> pass(es), <findings or "no findings">` recording the loop result (always emitted).
+- **Persisted archplan** — the full output contract written to `docs/plans/<YYYY-MM-DD>-<slug>.archplan.md` (step 9b), so the plan survives the chat and `/archspec:implement` can check code against it.
+- **Plan review** — one line in the literal shape `Plan-review: APPROVED after <N> round(s), <summary>` recording the independent review gate result (step 9c, always emitted).
 - **Definition of done** — an explicit checklist stating that the change is *not* done on a green build: it is done only when `/archspec:validate` (and, for cross-service work, `/archspec:check-architecture`) is green and every `edge_cases[]` entry added above has a test that exercises it.
-- **Next loop** — `apply YAML edits -> /archspec:sync -> implement -> /archspec:validate -> /archspec:check-architecture` when the change spans services.
+- **Next loop** — `/archspec:implement <archplan>` (applies the YAML edits, runs `/archspec:sync`, implements with conformance gates, then `/archspec:validate` + `/archspec:check-architecture` when the change spans services).
 
 ## When to run
 
@@ -86,15 +89,30 @@ guessing what is next:
 
 4. **Summarise** what the contract says, in 5–8 lines. Quote field paths (e.g. `consistency.write_path.pattern: outbox`) so the user can verify.
 
-5. **Draw a chat-only Mermaid diagram of the proposed change**. Embed it in the response — do **not** write to disk. Highlight new/changed nodes with a `:::new` class:
+5. **Draw a chat-only Mermaid *sequence diagram* of the proposed change**. Embed it in the response — do **not** write code or contract files. For any flow that crosses a service boundary the diagram **must** be a `sequenceDiagram`, not a flowchart: a sequence diagram is the only Mermaid form that shows *who calls whom, in what order, sync vs async, and where each branch terminates* — the exact properties a reviewer needs to catch a sync RPC where an event belongs or a dead-end with no terminal state. A `flowchart` is allowed only as the named exception for **intra-service** branch logic (one service's internal decision tree, no cross-service arrows).
+
+   Conventions:
+
+   - One `participant` per service, plus one for the broker (NATS/Kafka) when events are involved, plus the external actor (Client) when the trigger is external.
+   - `->>`  for synchronous calls (HTTP/gRPC); `-)` for asynchronous event publish/consume — never draw an event as a sync arrow.
+   - `alt` / `else` blocks for every limit and terminal branch (limit exhausted, no candidates, empty result) — each `else` leg must end in a state transition **and** a notification, mirroring the Failure & terminal paths dimension.
+   - Mark new or changed interactions with a trailing `%% new` comment or a `Note over` so the delta is visible.
 
    ```mermaid
-   flowchart LR
-     classDef new stroke:#0a0,stroke-width:2px;
-     svc[listing-service]
-     newEp[POST /listings/bulk]:::new
-     newEp --> svc
-     svc --> kafka>listings.created v1]
+   sequenceDiagram
+     participant C as Client
+     participant GW as api-gateway
+     participant TS as task-service
+     participant N as NATS
+     participant MS as matching-service
+     C->>GW: POST /tasks/{id}/decline-offer
+     GW->>TS: DeclineOffer(task_id) %% new
+     alt reassignment_count <= limit
+       TS-)N: offer.declined %% new (outbox)
+       N-)MS: offer.declined
+     else limit exhausted
+       TS-)N: task.failed %% new — terminal state + client notification
+     end
    ```
 
 6. **Propose YAML edits** as a unified-diff snippet. Don't apply them — let the user accept, tweak, then run /archspec:sync. Example shape:
@@ -168,6 +186,25 @@ guessing what is next:
    - **A finding left as prose with no `edge_cases[]` entry** (step 8a): did every gap / deviation / `# UNCONFIRMED` / join-key risk become a testable `edge_cases[]` entry or an explicit open question, or is one still sitting in the narrative where the plan step will scroll past it?
 
    Record the outcome as a one-line note in the output using the literal prefix and shape `Self-review: <N> pass(es), <what was found and fixed, or "no findings">` — write the count grammatically (`1 pass`, `2 passes`). E.g. `Self-review: 2 passes, found+fixed premature client notify and a stale dedup key; no remaining findings`. Always emit this line, even on a clean first pass (`Self-review: 1 pass, no findings`). If a finding can't be resolved without the user, raise it as a new open question rather than shipping it.
+
+9b. **Persist the plan as an `.archplan.md` artifact.** Write the *complete* output contract (contract slice, reference cross-check, open questions, sequence diagram, YAML patch, fan-out trace, state-ownership map, edge_cases register, self-review line) to `docs/plans/<YYYY-MM-DD>-<slug>.archplan.md`. This is the **only file** this skill writes — code, contracts, and generated docs stay untouched. Why a file and not chat: the agent that writes the coding plan and the subagents that implement it do **not** re-read this conversation — in task_3 the plan step silently flipped the topology to sync RPC, invented a `SearchBySkills` method, and dropped the snapshot-reuse invariant precisely because the investigation lived only in chat. The artifact is the contract `/archspec:implement` later checks the code against.
+
+9c. **Independent plan review — a gate, not a courtesy.** Self-review by the author's own context is weak: it re-reads its own assumptions. Dispatch a **reviewer subagent with a fresh context** (no access to this chat history) and give it only: the `.archplan.md` artifact path, the list of every `SERVICE_MAP.yaml` in the repo, proto/contract directories, and the reference spec path if one was supplied. Its instruction is to adversarially try to **reject** the plan against this rubric — one verdict per item, with file:line / field-path evidence:
+
+   1. **Requirement trace** — every stated requirement of the task maps to a concrete plan element (event, endpoint, field, edge case); name the plan element per requirement. A requirement with no plan element is a REVISE.
+   2. **No invented methods** — every downstream method the plan calls **exists** in the callee's `SERVICE_MAP.yaml` / proto. A method that does not exist anywhere is a REVISE, no matter how plausible its name.
+   3. **Reuse vs recompute** — any expensive or non-deterministic pipeline (text analysis, candidate search) consumed by a retry/reassignment loop is snapshotted on the first attempt and reused; a plan that re-runs it per attempt must justify why, or REVISE.
+   4. **Batch endpoints** — wherever the callee exposes a batch variant, the plan uses it; per-item loops over singular calls are a REVISE.
+   5. **Topology & ownership** — triggers and notifications flow as events per the owner's `consistency.write_path`; no sync RPC mutates a foreign aggregate; each state transition originates in its system-of-record.
+   6. **End-to-end field threading** — every new field is traced from the public entry point (gateway proto / HTTP body / seed & fixture data) through the owner to every consumer; a field added to an internal proto but absent from the public edge is a REVISE.
+   7. **Dedup & atomicity** — dedup keys cover every consumer of the changed event; dedup marking is atomic with (or after) the side effects, never before. **Per-attempt identity**: name every identifier that is reused across retry/reassignment attempts (a match id, an offer id) — each such ID must either be **regenerated per attempt** or be part of **every** consumer's dedup key; an ID that survives into attempt N+1 while any consumer dedups on it silently swallows the retry. A plan line like "dedup on <ID> remains, no key change" in a retry loop is a REVISE, not a reassurance.
+   8. **No `# UNCONFIRMED` survives** — every marker is resolved, asked, or explicitly carried as an open question + edge_cases entry; an unresolved marker baked into the final YAML is a REVISE.
+   9. **Terminal branches** — every dead-end (limit exhausted, no candidates, empty result, including the *first* attempt) ends in a state transition and a notification.
+   10. **Diagram conformance** — the sequence diagram and the YAML patch describe the same design (same events, same sync/async split, same terminal branches).
+
+   The reviewer returns `APPROVED` or `REVISE` + findings. On REVISE: fix the artifact, then dispatch a **new** reviewer (fresh context again). Loop at most **3 rounds**; if findings remain after 3 rounds, stop and surface them to the user as open questions instead of shipping the plan. Always emit the literal line `Plan-review: APPROVED after <N> round(s), <one-line summary of what the rounds caught>`.
+
+   **Solo degradation is not approval.** If you cannot dispatch subagents, the gate degrades to re-reading your own plan — the exact weakness this step exists to fix. Walk the rubric anyway, but emit `Plan-review: SELF-ONLY after <N> pass(es), <summary>` instead of `APPROVED`, so the downstream implement phase and the human can see the plan was never independently reviewed.
 
 10. **End with the full loop, not just sync.** The contract is only safe if code is checked back against it. Spell out the path: apply the YAML edits → `/archspec:sync` → implement → `/archspec:validate` (runs the behavioural linters — outbox, idempotency, optimistic-locking) → `/archspec:check-architecture` for any change that spans more than one service. A green build or passing unit tests is **not** a substitute for `/archspec:validate`: those tests usually cover only the happy path that was just written.
 

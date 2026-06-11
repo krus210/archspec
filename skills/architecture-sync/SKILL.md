@@ -7,6 +7,19 @@ description: Use when the user edits SERVICE_MAP.yaml, asks to "regenerate diagr
 
 Regenerates Mermaid diagrams and `docs/ARCHITECTURE.md` from `docs/SERVICE_MAP.yaml`. Deterministic — same input ⇒ same output bytes.
 
+Every bash snippet below assumes the plugin root is resolved first — when archspec runs
+as an installed plugin, `CLAUDE_PROJECT_DIR` points at the *consumer* repo, which has no
+`bin/`, `skills/`, or `hooks/`:
+
+```bash
+ARCHSPEC_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}"
+```
+
+In a **monorepo** (multiple `*/docs/SERVICE_MAP.yaml`), run the sync procedure from
+*each service's directory* (`cd services/<name>`), not from the repo root — all
+`docs/...` paths below are service-relative. Only **Check architecture** runs from the
+monorepo root.
+
 ## What this skill produces
 
 ### Existing service map (`/archspec:sync`)
@@ -41,7 +54,7 @@ Reference init output lives in `examples/task-service-init-output/docs/diagrams/
 2. Validate the YAML against the schema:
 
    ```bash
-   ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/validate_servicemap.py docs/SERVICE_MAP.yaml
+   $ARCHSPEC_ROOT/bin/archspec-python $ARCHSPEC_ROOT/skills/architecture-sync/scripts/validate_servicemap.py docs/SERVICE_MAP.yaml
    ```
 
    Exit 0 = continue. Exit 1 = surface the schema error verbatim and stop. Exit 2 = file missing, suggest `/archspec:init`.
@@ -49,13 +62,13 @@ Reference init output lives in `examples/task-service-init-output/docs/diagrams/
 3. Run the sync entry point:
 
    ```bash
-   ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/sync.py docs/SERVICE_MAP.yaml docs
+   $ARCHSPEC_ROOT/bin/archspec-python $ARCHSPEC_ROOT/skills/architecture-sync/scripts/sync.py docs/SERVICE_MAP.yaml docs
    ```
 
 4. Sanity-check the generated `.mmd`:
 
    ```bash
-   ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/validate_mermaid.py docs/diagrams/*.mmd
+   $ARCHSPEC_ROOT/bin/archspec-python $ARCHSPEC_ROOT/skills/architecture-sync/scripts/validate_mermaid.py docs/diagrams/*.mmd
    ```
 
 5. Stage the regenerated artifacts:
@@ -98,8 +111,8 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
    ```bash
    mkdir -p docs/adr docs/diagrams .servicemap
-   cp ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/templates/SERVICE_MAP.template.yaml docs/SERVICE_MAP.yaml
-   cp ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/schema/servicemap.schema.json .servicemap/schema.json
+   cp $ARCHSPEC_ROOT/skills/architecture-sync/templates/SERVICE_MAP.template.yaml docs/SERVICE_MAP.yaml
+   cp $ARCHSPEC_ROOT/skills/architecture-sync/schema/servicemap.schema.json .servicemap/schema.json
    ```
 
 2a. **Top-level architecture spec ingest (opt-in).** Ask the user via `AskUserQuestion`:
@@ -127,7 +140,7 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    Run the scanner against the service directory (the directory that contains `main.go` or `go.mod`):
 
    ```bash
-   ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/scan_go.py . > /tmp/archspec-scan.json
+   $ARCHSPEC_ROOT/bin/archspec-python $ARCHSPEC_ROOT/skills/architecture-sync/scripts/scan_go.py . > /tmp/archspec-scan.json
    ```
 
    Read `/tmp/archspec-scan.json`. The schema is:
@@ -217,8 +230,8 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    - **Path provided** — run the reverse scanner:
 
      ```bash
-     ${CLAUDE_PROJECT_DIR}/bin/archspec-python \
-       ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/scan_go.py \
+     $ARCHSPEC_ROOT/bin/archspec-python \
+       $ARCHSPEC_ROOT/skills/architecture-sync/scripts/scan_go.py \
        --reverse-scan <monorepo-root> --target <service.name> > /tmp/archspec-reverse.json
      ```
 
@@ -235,8 +248,8 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
      **Apply the findings deterministically — do NOT rely on the LLM to remember to write each entry.** Use the merge script:
 
      ```bash
-     ${CLAUDE_PROJECT_DIR}/bin/archspec-python \
-       ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/apply_upstream.py \
+     $ARCHSPEC_ROOT/bin/archspec-python \
+       $ARCHSPEC_ROOT/skills/architecture-sync/scripts/apply_upstream.py \
        docs/SERVICE_MAP.yaml --reverse-scan-json /tmp/archspec-reverse.json
      ```
 
@@ -335,7 +348,7 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    After writing, run the validator to confirm the YAML still parses cleanly:
 
    ```bash
-   ${CLAUDE_PROJECT_DIR}/bin/archspec-python ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/validate_servicemap.py docs/SERVICE_MAP.yaml
+   $ARCHSPEC_ROOT/bin/archspec-python $ARCHSPEC_ROOT/skills/architecture-sync/scripts/validate_servicemap.py docs/SERVICE_MAP.yaml
    ```
 
    Exit 0 = continue. Exit 0 with `WARN DET-006` lines on stderr = TODO placeholders survive in optional fields; that's fine for a draft. Exit 1 = schema error or strict-mode TODO violation — surface the diagnostic and ask the user to amend.
@@ -352,14 +365,14 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
 
    ```bash
    if ! grep -q "archspec:claude-block:start" CLAUDE.md 2>/dev/null; then
-     cat ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/templates/CLAUDE.archspec-block.md >> CLAUDE.md
+     cat $ARCHSPEC_ROOT/skills/architecture-sync/templates/CLAUDE.archspec-block.md >> CLAUDE.md
    fi
    ```
 
 6. Install the pre-commit hook:
 
    ```bash
-   bash ${CLAUDE_PROJECT_DIR}/hooks/pre-commit/install_hooks.sh
+   bash $ARCHSPEC_ROOT/hooks/pre-commit/install_hooks.sh
    ```
 
 7. Print:
@@ -401,8 +414,8 @@ Read-only audit of an entire monorepo. Walks every `**/SERVICE_MAP.yaml` reachab
 2. Run the audit script:
 
    ```bash
-   ${CLAUDE_PROJECT_DIR}/bin/archspec-python \
-     ${CLAUDE_PROJECT_DIR}/skills/architecture-sync/scripts/check_architecture.py \
+   $ARCHSPEC_ROOT/bin/archspec-python \
+     $ARCHSPEC_ROOT/skills/architecture-sync/scripts/check_architecture.py \
      <repo-root> [--issues-only|--full]
    ```
 

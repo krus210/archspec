@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 SKILLS = ROOT / "skills"
 
-EXPECTED = ["architecture-sync", "architecture-investigate"]
+EXPECTED = ["architecture-sync", "architecture-investigate", "architecture-implement"]
 
 
 def _frontmatter(text: str) -> dict[str, str]:
@@ -338,4 +338,193 @@ def test_investigate_self_review_hunts_ownership_replay_and_n_plus_1():
     assert "owner-applies-async" in low, (
         "the clarify/self-review must prefer the owner-applies-async-command shape over a "
         "foreign-aggregate sync mutation"
+    )
+
+
+def test_investigate_draws_sequence_diagram():
+    """The chat-only change diagram must be a Mermaid sequence diagram for any
+    cross-service flow, mirroring how reference/golden specs are drawn. A
+    flowchart hides who calls whom, what is sync vs async, and where the
+    terminal branches are — exactly the properties task_3 reviews flagged.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "sequencediagram" in low, (
+        "investigate must draw a Mermaid sequenceDiagram for cross-service changes"
+    )
+    assert "->>" in text and "-)" in text, (
+        "the sequence diagram must distinguish sync calls (->>) from async events (-))"
+    )
+    assert "alt" in low and "terminal" in low, (
+        "limit/dead-end branches must appear as alt/else blocks with terminal states"
+    )
+    assert "intra-service" in low, (
+        "a flowchart is allowed only as the named exception for intra-service branch logic"
+    )
+
+
+def test_investigate_persists_archplan_artifact():
+    """The investigation output must survive the chat: the plan-writer and the
+    implement skill read files, not chat history. Regression guard for task_3,
+    where the plan step silently flipped the topology (sync RPC instead of
+    outbox events) and dropped snapshot reuse because the investigation lived
+    only in conversation context.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert ".archplan.md" in low, (
+        "investigate must persist its output contract to a docs/plans/*.archplan.md artifact"
+    )
+    assert "docs/plans/" in low, "the archplan artifact lives under docs/plans/"
+    assert "only file" in low or "single artifact" in low, (
+        "the artifact is the ONLY file this skill writes — code and contracts stay untouched"
+    )
+
+
+def test_investigate_has_independent_plan_review_gate():
+    """Self-review by the same context is weak: the author re-reads their own
+    assumptions. task_3 shipped 3 plan-level bugs (re-run instead of snapshot
+    reuse, GetWorkersBatch missing, facade boundary unspecified) straight past
+    the self-review loop. The gate must be an INDEPENDENT subagent with a fresh
+    context, an adversarial rubric, and a hard verdict loop.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "fresh context" in low and "subagent" in low, (
+        "the plan must be reviewed by an independent subagent with a fresh context"
+    )
+    # rubric items — each maps to a task_3 plan/implementation failure
+    assert "does not exist" in low or "invented method" in low, (
+        "rubric: every downstream method named in the plan must exist in the callee's contract"
+    )
+    assert "snapshot" in low and "recompute" in low, (
+        "rubric: reuse-vs-recompute — expensive results snapshotted, not re-run per attempt"
+    )
+    assert "batch" in low, "rubric: batch endpoints used where the downstream exposes them"
+    assert "end-to-end" in low and ("seed" in low or "fixture" in low), (
+        "rubric: every new field threaded from the public entry point to consumers, incl. seeds"
+    )
+    assert "requirement" in low and "plan element" in low, (
+        "rubric: every stated requirement maps to a concrete plan element"
+    )
+    assert "Plan-review: APPROVED after <N> round(s)" in text, (
+        "the gate must emit the literal 'Plan-review: APPROVED after <N> round(s), ...' line"
+    )
+    assert "3 round" in low or "three round" in low, (
+        "the review loop is bounded: after 3 rounds unresolved findings escalate to the user"
+    )
+
+
+def test_implement_has_conformance_gates():
+    """/archspec:implement exists because task_3 proved a green build is not
+    conformance: the code shipped a nil-wired gateway, never published
+    match.found on reassignment, never threaded city_id through the public
+    edge, and marked dedup before the side effects. Each gate below kills one
+    of those bug classes.
+    """
+    text = (SKILLS / "architecture-implement" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    # input: the persisted archplan artifact
+    assert ".archplan.md" in low, "implement consumes the .archplan.md artifact from investigate"
+    assert "/archspec:investigate" in low, (
+        "without an archplan artifact, implement must refuse and point to /archspec:investigate"
+    )
+    # phase: contracts first
+    assert "yaml patch" in low and "/archspec:sync" in low, (
+        "implement applies the archplan's YAML patch and regenerates docs via /archspec:sync"
+    )
+    # phase: coding plan with conformance table
+    assert "conformance table" in low, (
+        "the coding plan must carry a conformance table: archplan element -> coding task"
+    )
+    assert "superpowers:writing-plans" in low, (
+        "the coding plan is written with superpowers:writing-plans"
+    )
+    assert "exists in the callee" in low or "does not exist" in low, (
+        "pre-code gate: every downstream method in the plan exists in the callee's contract/proto"
+    )
+    # post-code conformance passes — one per task_3 bug class
+    assert "composition root" in low and "nil" in low, (
+        "wiring pass: no nil passed for a declared dependency in any composition root/main.go"
+    )
+    assert "events.published" in low and "emit site" in low, (
+        "emission pass: every declared published event has a real emit site in code"
+    )
+    assert "end-to-end" in low and ("seed" in low or "fixture" in low), (
+        "threading pass: every new field reaches the public edge, seeds and fixtures included"
+    )
+    assert "before the side effects" in low or "after the side effects" in low, (
+        "dedup pass: dedup marking must be atomic with or after the side effects, never before"
+    )
+    assert "file:line" in low and "requirement" in low, (
+        "evidence pass: every requirement maps to file:line proof"
+    )
+    # validation gates
+    assert "/archspec:validate" in low and "/archspec:check-architecture" in low, (
+        "implement runs the monorepo-aware validate and check-architecture and fixes BLOCKs"
+    )
+    # final independent review
+    assert "fresh context" in low and "diff" in low, (
+        "a fresh-context subagent reviews the final diff against the archplan"
+    )
+    # commit discipline
+    assert "do not push" in low or "without pushing" in low or "no push" in low, (
+        "implement commits but never pushes"
+    )
+
+
+def test_plan_review_enforces_per_attempt_identity():
+    """task_5 shipped the task_1 bug again: matching reused the same MatchID in
+    the reassignment match.found and notification deduped on MatchID — the
+    re-offer was swallowed as a duplicate. The plan even said "dedup on MatchID
+    remains, no key change" and self-review approved it. The rubric must name
+    the rule explicitly: an ID reused across retry attempts must either be
+    regenerated per attempt or be part of EVERY consumer's dedup key.
+    """
+    text = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "reused across" in low and "attempt" in low, (
+        "plan-review rubric must call out identifiers reused across retry attempts"
+    )
+    assert "regenerated per attempt" in low or "new per attempt" in low, (
+        "the fix options must be named: regenerate per attempt, or attempt-qualify "
+        "every consumer's dedup key"
+    )
+
+
+def test_review_gates_mark_solo_degradation():
+    """When the executing agent cannot dispatch subagents, the 'independent
+    fresh-context review' silently degrades to self-review — in task_5 that
+    degraded gate approved the critical bug. The degradation must be visible:
+    a SELF-ONLY verdict marker in both gates.
+    """
+    inv = (SKILLS / "architecture-investigate" / "SKILL.md").read_text(encoding="utf-8")
+    imp = (SKILLS / "architecture-implement" / "SKILL.md").read_text(encoding="utf-8")
+    assert "SELF-ONLY" in inv, (
+        "investigate step 9c must mark a solo (no-subagent) review as SELF-ONLY"
+    )
+    assert "SELF-ONLY" in imp, (
+        "implement phase G must mark a solo (no-subagent) review as SELF-ONLY"
+    )
+
+
+def test_implement_conformance_passes_cover_task5_bug_classes():
+    """Three HIGHs in task_5 slipped through the conformance passes because the
+    passes did not name them: a gRPC client default pointing at another
+    service's port; a documented public route that the router never matches;
+    and a replayed second-attempt event swallowed by a consumer's dedup key.
+    """
+    text = (SKILLS / "architecture-implement" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "port" in low and ("address" in low or "addr" in low), (
+        "wiring pass must verify client default addresses/ports against the target "
+        "service's actual listen port"
+    )
+    assert "router" in low and "string-for-string" in low, (
+        "threading pass must require declared public routes to match the router "
+        "registration string-for-string"
+    )
+    assert "second-attempt" in low or "second attempt" in low, (
+        "dedup pass must trace a literal second-attempt event through every "
+        "consumer's dedup logic"
     )
