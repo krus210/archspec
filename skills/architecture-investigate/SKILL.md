@@ -1,9 +1,15 @@
 ---
 name: architecture-investigate
-description: Use before non-trivial feature or bugfix work — phrases like "let's add X", "investigate Y", "understand how Z works", or when the user runs /archspec:investigate. Read-only: consults SERVICE_MAP.yaml, asks clarifying questions about ambiguous requirements, then proposes a change plan + chat-only Mermaid.
+description: Use before non-trivial feature or bugfix work — phrases like "let's add X", "investigate Y", "understand how Z works", or when the user runs /archspec:investigate. Read-only — consults SERVICE_MAP.yaml, asks clarifying questions about ambiguous requirements, then proposes a change plan + chat-only Mermaid.
 ---
 
 # architecture-investigate
+
+**Invoking this skill.** Claude Code: `/archspec:investigate`. Codex:
+type `$architecture-investigate` or pick it from `/skills`. opencode: it loads via the
+`skill` tool, or `/archspec/investigate` if you installed the command files. Under
+Codex/opencode there is no `CLAUDE_PLUGIN_ROOT`; before the first bash block,
+`export ARCHSPEC_SKILL_DIR=<the absolute path your host shows for this skill>`.
 
 Read-side workflow. Read-only for code and contracts — the **only file** it writes is the persisted plan artifact `docs/plans/<date>-<slug>.archplan.md` (step 9b). Produces:
 
@@ -49,7 +55,7 @@ guessing what is next:
 
    If missing, stop and tell the user.
 
-2. **Read the slice that matters**. Use the Read tool on `docs/SERVICE_MAP.yaml`. Identify which sections relate to the user's question:
+2. **Read the slice that matters**. Read `docs/SERVICE_MAP.yaml`. Identify which sections relate to the user's question:
 
    | User mention | Relevant sections |
    | --- | --- |
@@ -59,14 +65,14 @@ guessing what is next:
    | aggregate, lock, conflict | `concurrency.aggregates`, `consistency.bounded_aggregate` |
    | retry, fallback, failure | `dependencies.downstream.sync.*.fallback`, `failure_modes` |
 
-2a. **Optional: ingest a reference / golden architecture spec.** A feature prompt rarely states the naming conventions or the out-of-prompt invariants the team already expects (e.g. "reassignment reuses the initial match snapshot — do not re-run the search"; the canonical subject is `offer.declined`, not a freshly invented `task.offer_rejected`). Ask the user **once** with `AskUserQuestion`:
+2a. **Optional: ingest a reference / golden architecture spec.** A feature prompt rarely states the naming conventions or the out-of-prompt invariants the team already expects (e.g. "reassignment reuses the initial match snapshot — do not re-run the search"; the canonical subject is `offer.declined`, not a freshly invented `task.offer_rejected`). Ask the user **once** — use your host's structured multiple-choice tool if it has one (Claude Code `AskUserQuestion`, opencode `question`), otherwise present the options as a numbered list and **stop until the user replies**:
 
    > "Is there a reference / golden architecture spec for this change — a design doc, an RFC, a target-state diagram, a naming convention? Paste a path, or answer `skip`."
 
    - **Path provided** — Read it and keep it as conversation context only (do not parse it into the contract). Use it to cross-check the design you are about to draw: event/topic names, RPC names, dedup/idempotency keys, and the invariants it mandates. When your proposal diverges from the reference, **name the divergence** in the Reference cross-check note — never silently rename `offer.declined` → `task.offer_rejected` or quietly drop an invariant the spec requires. The spec is a hint, never an override: if it contradicts the live `SERVICE_MAP.yaml` or the code, prefer reality and say so.
    - **`skip` / none** — proceed, and note in the output that no reference spec was supplied, so naming and any out-of-prompt invariants were inferred from the contract alone (a known blind spot — the prompt cannot be assumed complete).
 
-3. **Clarify ambiguities before proposing anything (gate)**. A feature prompt is almost never complete enough to design a cross-service change. Walk the checklist below and, for every dimension the prompt and `SERVICE_MAP.yaml` do **not** already answer unambiguously, ask the user with `AskUserQuestion` (batch the questions into as few calls as possible). Asking is read-only — it modifies nothing.
+3. **Clarify ambiguities before proposing anything (gate)**. A feature prompt is almost never complete enough to design a cross-service change. Walk the checklist below and, for every dimension the prompt and `SERVICE_MAP.yaml` do **not** already answer unambiguously, ask the user (use your host's structured multiple-choice tool if it has one — Claude Code `AskUserQuestion`, opencode `question` — otherwise present the options as a numbered list and **stop until the user replies**; ask several questions together in one message where possible; **do not proceed until the user answers**). Asking is read-only — it modifies nothing.
 
    | Dimension | What to pin down | Failure it prevents |
    | --- | --- | --- |
@@ -189,7 +195,7 @@ guessing what is next:
 
 9b. **Persist the plan as an `.archplan.md` artifact.** Write the *complete* output contract (contract slice, reference cross-check, open questions, sequence diagram, YAML patch, fan-out trace, state-ownership map, edge_cases register, self-review line) to `docs/plans/<YYYY-MM-DD>-<slug>.archplan.md`. This is the **only file** this skill writes — code, contracts, and generated docs stay untouched. Why a file and not chat: the agent that writes the coding plan and the subagents that implement it do **not** re-read this conversation — in task_3 the plan step silently flipped the topology to sync RPC, invented a `SearchBySkills` method, and dropped the snapshot-reuse invariant precisely because the investigation lived only in chat. The artifact is the contract `/archspec:implement` later checks the code against.
 
-9c. **Independent plan review — a gate, not a courtesy.** Self-review by the author's own context is weak: it re-reads its own assumptions. Dispatch a **reviewer subagent with a fresh context** (no access to this chat history) and give it only: the `.archplan.md` artifact path, the list of every `SERVICE_MAP.yaml` in the repo, proto/contract directories, and the reference spec path if one was supplied. Its instruction is to adversarially try to **reject** the plan against this rubric — one verdict per item, with file:line / field-path evidence:
+9c. **Independent plan review — a gate, not a courtesy.** Self-review by the author's own context is weak: it re-reads its own assumptions. Dispatch an independent reviewer with a fresh context (a subagent if your host supports one, otherwise a separate CLI session / new chat with no history) and give it only: the `.archplan.md` artifact path, the list of every `SERVICE_MAP.yaml` in the repo, proto/contract directories, and the reference spec path if one was supplied. Its instruction is to adversarially try to **reject** the plan against this rubric — one verdict per item, with file:line / field-path evidence:
 
    1. **Requirement trace** — every stated requirement of the task maps to a concrete plan element (event, endpoint, field, edge case); name the plan element per requirement. A requirement with no plan element is a REVISE.
    2. **No invented methods** — every downstream method the plan calls **exists** in the callee's `SERVICE_MAP.yaml` / proto. A method that does not exist anywhere is a REVISE, no matter how plausible its name.

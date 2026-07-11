@@ -10,8 +10,23 @@ all `**/SERVICE_MAP.yaml` files in the current repository.
 Open `skills/architecture-sync/SKILL.md` and follow the **Check architecture
 (used by /archspec:check-architecture)** section verbatim.
 
-Resolve plugin assets via `ARCHSPEC_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}"` —
-when archspec runs as an installed plugin, the consumer repo has no `skills/` or `bin/`.
+Resolve the skill's bundled assets relative to its own directory:
+
+```bash
+# archspec resolves its bundled assets relative to THIS skill's own directory, so it
+# works as a Claude Code plugin, a Codex/opencode skill, or an `npx skills` install.
+# Claude Code sets CLAUDE_PLUGIN_ROOT; under Codex/opencode/npx-skills your host tells
+# you this skill's absolute path — export ARCHSPEC_SKILL_DIR to it once per session.
+SKILL_DIR="${ARCHSPEC_SKILL_DIR:-${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/architecture-sync}}"
+: "${SKILL_DIR:?set ARCHSPEC_SKILL_DIR to this skill's own directory (its absolute path)}"
+```
+
+Call bundled python scripts through the launcher:
+
+```bash
+bash "$SKILL_DIR/scripts/_py.sh" "$SKILL_DIR/scripts/<name>.py" <args...>
+```
+
 Run it from the **monorepo root**: the audit itself walks every `**/SERVICE_MAP.yaml`.
 
 Read-only: never modifies any file.

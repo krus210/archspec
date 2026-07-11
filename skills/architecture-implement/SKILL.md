@@ -5,15 +5,22 @@ description: Use when an .archplan.md artifact exists and the user wants the cha
 
 # architecture-implement
 
+> **Invoking this skill.** Claude Code: `/archspec:<cmd>` (e.g. `/archspec:sync`). Codex:
+> type `$architecture-implement` or pick it from `/skills`. opencode: it loads via the
+> `skill` tool, or `/archspec/<cmd>` if you installed the command files. Under
+> Codex/opencode there is no `CLAUDE_PLUGIN_ROOT`; before the first bash block,
+> `export ARCHSPEC_SKILL_DIR=<the absolute path your host shows for this skill>`.
+
 Write-side counterpart of `architecture-investigate`. The archplan artifact is the
 **binding contract**: every phase below either derives from it or checks against it.
 This skill exists because a green build is not conformance — task_3 shipped a
 nil-wired gateway, a declared event with no emit site, a field that never reached the
 public edge, and dedup marked before its side effects, all with green unit tests.
 
-Builds on superpowers: `superpowers:writing-plans` for the coding plan,
-`superpowers:subagent-driven-development` or `superpowers:executing-plans` for
-execution, `superpowers:test-driven-development` per task.
+Builds on superpowers when the `superpowers` plugin is available: `superpowers:writing-plans`
+for the coding plan, `superpowers:subagent-driven-development` or
+`superpowers:executing-plans` for execution, `superpowers:test-driven-development` per
+task. Otherwise, follow the inline fallbacks given in each phase below.
 
 ## Phase A — Locate the archplan (gate)
 
@@ -29,14 +36,9 @@ execution, `superpowers:test-driven-development` per task.
 
 1. Apply the archplan's YAML patch to every touched `docs/SERVICE_MAP.yaml` (one per
    service in a monorepo — `cd` into each service directory).
-2. Validate each edited contract:
-
-   ```bash
-   ARCHSPEC_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}"
-   $ARCHSPEC_ROOT/bin/archspec-python \
-     $ARCHSPEC_ROOT/skills/architecture-sync/scripts/validate_servicemap.py docs/SERVICE_MAP.yaml
-   ```
-
+2. Validate each edited contract by running the `architecture-sync` skill's schema
+   validation (the same check `/archspec:sync` performs before it regenerates). Do
+   not proceed to the next phase while any contract fails validation.
 3. Run `/archspec:sync` in each touched service directory so `docs/diagrams/*.mmd` and
    the managed region of `docs/ARCHITECTURE.md` are regenerated **before** code is
    written — the diagrams must describe the target state, not trail it.
@@ -44,8 +46,10 @@ execution, `superpowers:test-driven-development` per task.
 
 ## Phase C — Coding plan with a conformance table
 
-Write the coding plan with `superpowers:writing-plans`, saved next to the archplan as
-`docs/plans/<date>-<slug>.codingplan.md`. Two extra obligations beyond that skill:
+If the `superpowers` plugin is available, use `superpowers:writing-plans`; otherwise
+write the coding plan yourself: one task per archplan element, each with its test,
+smallest safe steps, committed as you go. Either way, save it next to the archplan as
+`docs/plans/<date>-<slug>.codingplan.md`. Two extra obligations beyond that:
 
 1. **Conformance table** — a table with one row per archplan element: every event,
    endpoint, field, batch call, dedup key, and `edge_cases[]` entry, mapped to the
@@ -65,11 +69,12 @@ Write the coding plan with `superpowers:writing-plans`, saved next to the archpl
 
 ## Phase D — Implement
 
-Execute the coding plan task-by-task (`superpowers:subagent-driven-development` when
-subagents are available, else `superpowers:executing-plans`), with
-`superpowers:test-driven-development` per task. Frequent commits. Every `edge_cases[]`
-entry gets the test its `test:` path names — exercising the behaviour, not just
-creating the file.
+If the `superpowers` plugin is available, use `superpowers:subagent-driven-development`
+when subagents exist, else `superpowers:executing-plans`, with
+`superpowers:test-driven-development` per task; otherwise execute the plan task-by-task
+yourself with a test-first loop per task. Frequent commits. Every `edge_cases[]` entry
+gets the test its `test:` path names — exercising the behaviour, not just creating the
+file.
 
 ## Phase E — Conformance passes (the bug-class killers)
 
@@ -121,8 +126,9 @@ with green tests. Record the evidence inline; a pass with no evidence is not don
 
 ## Phase G — Independent final review
 
-Dispatch a reviewer subagent with a **fresh context** (no chat history). Give it: the
-archplan path, the coding plan path, and the branch diff (`git diff <base>...HEAD`).
+Dispatch an independent reviewer with a fresh context (a subagent if your host supports
+one, otherwise a separate CLI session / new chat with no history). Give it: the archplan
+path, the coding plan path, and the branch diff (`git diff <base>...HEAD`).
 It re-runs Phase E's five passes against the diff plus the archplan's rubric (topology,
 batch usage, snapshot reuse, terminal branches) and returns CRITICAL/MAJOR/MINOR
 findings with file:line. Fix every CRITICAL and MAJOR, then re-dispatch a fresh

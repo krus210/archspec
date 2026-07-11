@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-07-11
+
+Makes the three skills portable across Claude Code, Codex, and opencode, and installable
+via `npx skills` (the `vercel-labs/skills` CLI: `npx skills add krus210/archspec`). The
+deterministic core — git hooks, Python generators, Go linters, JSON schema, templates —
+is unchanged; Claude Code keeps working exactly as before.
+
+### Added
+- Portable python launcher `skills/architecture-sync/scripts/_py.sh`, bundled inside the
+  skill, replacing the repo-root `bin/archspec-python` that `npx skills` does not ship.
+- `tests/test_portability.py` — guards the portability invariants, including strict-YAML
+  parsing of every `SKILL.md` frontmatter (the check that mirrors how Codex, opencode and
+  `npx skills` load skills).
+- README install options B (`npx skills add`), C (Codex), D (opencode).
+
+### Changed
+- Bundled-script paths in the skills now resolve via a host-neutral `SKILL_DIR`
+  (`ARCHSPEC_SKILL_DIR` override, else `CLAUDE_PLUGIN_ROOT`) instead of the Claude-only
+  `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}`.
+- `architecture-implement` no longer calls `architecture-sync`'s scripts by path — it
+  delegates contract validation to the sync skill, so each skill is self-contained.
+- `AskUserQuestion` calls reworded to a host-neutral "ask and wait" (Claude Code
+  `AskUserQuestion` / opencode `question` / prose fallback for Codex).
+- Bootstrap writes the managed archspec block to `AGENTS.md` (the canonical cross-tool
+  instructions file) and `CLAUDE.md`, instead of `CLAUDE.md` only.
+- `superpowers:*` steps and subagent dispatch now degrade gracefully with inline
+  fallbacks when those plugins/primitives are unavailable.
+
+### Fixed
+- `architecture-investigate` was invisible to strict-YAML skill loaders (Codex, opencode,
+  `npx skills` discovered only 2 of 3 skills) because its frontmatter `description`
+  contained a `: ` (colon-space). Reworded so all three skills load everywhere.
+
 ## [0.11.1] - 2026-06-11
 
 Closes the bug classes the task_5 (solo-agent) run shipped past the v0.11.0 gates:
