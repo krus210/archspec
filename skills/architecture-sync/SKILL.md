@@ -1,6 +1,6 @@
 ---
 name: architecture-sync
-description: Use when the user edits SERVICE_MAP.yaml, asks to "regenerate diagrams", "update mermaid", "service map drift", or runs /archspec:sync. Regenerates docs/diagrams/*.mmd and the managed region of docs/ARCHITECTURE.md.
+description: Use when the user wants to bootstrap or initialize archspec for a service (create the SERVICE_MAP.yaml contract, diagrams and ARCHITECTURE.md), "set up archspec", "init archspec", edits SERVICE_MAP.yaml, asks to "regenerate diagrams", "update mermaid", "service map drift", or runs /archspec:init or /archspec:sync. Bootstraps a new service when docs/SERVICE_MAP.yaml is absent, otherwise regenerates docs/diagrams/*.mmd and the managed region of docs/ARCHITECTURE.md.
 ---
 
 # architecture-sync
