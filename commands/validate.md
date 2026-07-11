@@ -8,11 +8,22 @@ AI-layer audit. Complements the deterministic pre-commit (`hooks/pre-commit/run_
 
 This command does **not** modify any file. It produces a report.
 
-All plugin assets (scripts, linters) resolve via the plugin root, never the consumer
-repo:
+All plugin assets (scripts, linters) resolve via the skill's own directory, never the
+consumer repo:
 
 ```bash
-ARCHSPEC_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}"
+# archspec resolves its bundled assets relative to THIS skill's own directory, so it
+# works as a Claude Code plugin, a Codex/opencode skill, or an `npx skills` install.
+# Claude Code sets CLAUDE_PLUGIN_ROOT; under Codex/opencode/npx-skills your host tells
+# you this skill's absolute path — export ARCHSPEC_SKILL_DIR to it once per session.
+SKILL_DIR="${ARCHSPEC_SKILL_DIR:-${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/architecture-sync}}"
+: "${SKILL_DIR:?set ARCHSPEC_SKILL_DIR to this skill's own directory (its absolute path)}"
+```
+
+Call bundled python scripts through the launcher:
+
+```bash
+bash "$SKILL_DIR/scripts/_py.sh" "$SKILL_DIR/scripts/<name>.py" <args...>
 ```
 
 ## Procedure
@@ -36,7 +47,8 @@ ARCHSPEC_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}"
 
    ```bash
    git diff --name-only --cached --diff-filter=ACMR > /tmp/archspec-changed.txt
-   "$ARCHSPEC_ROOT/bin/archspec-python" "$ARCHSPEC_ROOT/hooks/pre-commit/run_all_checks.py" || true
+   ARCHSPEC_REPO_ROOT="${CLAUDE_PLUGIN_ROOT:-$SKILL_DIR/../..}"
+   bash "$SKILL_DIR/scripts/_py.sh" "$ARCHSPEC_REPO_ROOT/hooks/pre-commit/run_all_checks.py" || true
    ```
 
    Surface every BLOCK at the top of the report.
@@ -48,8 +60,8 @@ ARCHSPEC_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}"
    ```bash
    for MAP in $(cat /tmp/archspec-maps.txt); do
      SVC_DIR=$(dirname "$(dirname "$MAP")")
-     lang=$("$ARCHSPEC_ROOT/bin/archspec-python" -c "import yaml; print(yaml.safe_load(open('$MAP'))['service']['language'])")
-     LINTER="$ARCHSPEC_ROOT/linters/$lang/lint.sh"
+     lang=$(bash "$SKILL_DIR/scripts/_py.sh" -c "import yaml; print(yaml.safe_load(open('$MAP'))['service']['language'])")
+     LINTER="$ARCHSPEC_REPO_ROOT/linters/$lang/lint.sh"
      if [[ ! -x "$LINTER" ]]; then
        echo "INFO: no linters available for language=$lang ($SVC_DIR)"
        continue

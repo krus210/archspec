@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Benchmarks](https://github.com/krus210/archspec/actions/workflows/benchmarks.yml/badge.svg)](.github/workflows/benchmarks.yml)
-[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-blue)](https://www.anthropic.com/claude-code)
+[![Agent skills](https://img.shields.io/badge/Agent%20skills-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20opencode%20%C2%B7%20npx%20skills-blue)](https://www.anthropic.com/claude-code)
 
 ## What it does
 
@@ -38,6 +38,10 @@ deterministically from it, and validates code changes against it on two layers:
 
 ## 5-minute install
 
+archspec's three skills (`architecture-sync`, `architecture-investigate`,
+`architecture-implement`) are portable across Claude Code, Codex, and opencode. Pick
+the option that matches your setup.
+
 ### Option A — Claude Code plugin (recommended)
 
 ```bash
@@ -47,13 +51,46 @@ deterministically from it, and validates code changes against it on two layers:
 
 After installation, run `/reload-plugins` (or restart Claude Code) so commands and skills become available.
 
-### Option B — standalone skills
+### Option B — any agent, via `npx skills`
+
+```bash
+# installs the 3 archspec skills into every detected agent
+npx skills add krus210/archspec
+# or scope it: -a claude-code (repeatable), -g (global), -y (no prompts),
+#   --skill architecture-sync --skill architecture-investigate --skill architecture-implement
+```
+
+`install` / `i` / `a` are aliases of `add`. This installs **skills only** — the
+`/archspec:*` slash commands and git hooks come with Option A (or a manual clone).
+`npx skills` is the [`vercel-labs/skills`](https://github.com/vercel-labs/skills) CLI.
+
+### Option C — Codex (manual)
 
 ```bash
 git clone https://github.com/krus210/archspec
-ln -s "$PWD/archspec/skills/architecture-sync"        ~/.claude/skills/
-ln -s "$PWD/archspec/skills/architecture-investigate" ~/.claude/skills/
+mkdir -p .agents/skills   # or ~/.agents/skills for a global install
+cp -r archspec/skills/architecture-sync        .agents/skills/
+cp -r archspec/skills/architecture-investigate .agents/skills/
+cp -r archspec/skills/architecture-implement   .agents/skills/
 ```
+
+Older Codex builds scan `~/.codex/skills/` instead. Invoke a skill by typing
+`$architecture-sync` (or the skill name) or picking it from `/skills`.
+
+### Option D — opencode (manual)
+
+```bash
+git clone https://github.com/krus210/archspec
+mkdir -p .opencode/skills   # or ~/.config/opencode/skills for a global install
+cp -r archspec/skills/architecture-sync        .opencode/skills/
+cp -r archspec/skills/architecture-investigate .opencode/skills/
+cp -r archspec/skills/architecture-implement   .opencode/skills/
+```
+
+Append the archspec block (`skills/architecture-sync/templates/CLAUDE.archspec-block.md`)
+to `AGENTS.md` — the canonical cross-tool instructions file opencode reads (`CLAUDE.md`
+is only a fallback when no `AGENTS.md` exists). Optional command files go in
+`.opencode/command/archspec/`. Requires opencode ≥ v1.0.190 for native skills support.
 
 ### Bootstrap a service
 
@@ -63,7 +100,11 @@ cd path/to/your-service
 ```
 
 This creates `docs/SERVICE_MAP.yaml`, generates initial diagrams + `ARCHITECTURE.md`,
-installs the pre-commit hook, and appends the archspec block to `CLAUDE.md`.
+installs the pre-commit hook, and appends the archspec block to `AGENTS.md` (the
+canonical cross-tool instructions file) and `CLAUDE.md` (Claude Code's native file).
+It runs the same way once the skill is loaded on any host: Claude Code `/archspec:init`;
+Codex `$architecture-sync` and ask it to bootstrap; opencode load the skill and ask it
+to bootstrap.
 
 ## What you get
 
@@ -164,6 +205,8 @@ See `commands/*.md` for full details.
 | `architecture-sync` | After Edit on `SERVICE_MAP.yaml`; phrases like "regenerate diagram", "service map drift" | Validated `SERVICE_MAP.yaml`, refreshed Mermaid diagrams, refreshed `ARCHITECTURE.md`, staged generated artifacts |
 | `architecture-investigate` | Phrases like "let's add X", "investigate Y", "understand how Z works" | Read-only architecture slice, clarification gate, optional reference-spec cross-check, change-only sequence diagram, proposed YAML diff with an `edge_cases[]` risk register, self-review loop, persisted `.archplan.md` + independent plan-review gate, definition-of-done + validation checklist |
 | `architecture-implement` | An `.archplan.md` exists and the user says "implement the plan", "build it" | Applied contract edits, coding plan with conformance table, TDD implementation, five conformance passes, green validate/check-architecture, independent diff review |
+
+Skills are portable across Claude Code, Codex, and opencode — see the install options above.
 
 ## What gets validated
 
