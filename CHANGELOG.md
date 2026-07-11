@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-07-11
+
+Discoverability fix for skills-only installs (Codex, opencode, `npx skills`), where there
+is no `/archspec:init` slash command to point at the bootstrap flow.
+
+### Changed
+- The `architecture-sync` skill `description` now advertises the bootstrap/init flow
+  ("bootstrap", "initialize", "set up archspec", `/archspec:init`), so an "init archspec"
+  request auto-selects the skill on hosts that route by description. The bootstrap logic
+  already lived inside the skill — only its trigger signal was sync-only, so on
+  Codex/opencode the user had to name `$architecture-sync` explicitly.
+
 ## [0.12.0] - 2026-07-11
 
 Makes the three skills portable across Claude Code, Codex, and opencode, and installable
