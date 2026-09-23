@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.0] - 2026-09-23
 
 ### Fixed
 - `check_exceptions` no longer crashes the pre-commit hook on an unquoted
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the TODO check `DET-006` describe the id as it was at that time.
 - Docs: aligned with the code (architecture-audit ids in the catalog, planned
   AI rules marked, schema path, Go version, `on_failure` vocabulary, per-linter
-  output files in `/archspec:validate`); `pyproject.toml` version synced to 0.12.1.
+  output files in `/archspec:validate`); `pyproject.toml` version synced with the plugin manifests.
 
 ## [0.12.1] - 2026-07-11
 
