@@ -59,15 +59,15 @@ the right place is enough.
 A service may declare any string for `service.language`. If the
 matching directory does not exist, `/archspec:validate` reports
 "language `<lang>` has no linter installed" but does not fail. The
-deterministic layer (`DET-001..015`) still runs because it is
+deterministic layer (`DET-001..016`) still runs because it is
 language-agnostic.
 
 ---
 
 ## 3. The JSON Finding contract
 
-Every linter writes a JSON array of `Finding` objects to stdout. This
-schema is taken verbatim from the design spec §4.5:
+Every linter writes a JSON array of `Finding` objects to stdout. The
+schema matches the `Finding` struct in `linters/go/finding.go`:
 
 ```json
 {

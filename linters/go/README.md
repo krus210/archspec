@@ -15,7 +15,7 @@ Day-one rule set for `/archspec:validate` against Go services.
 
 ## Invocation
 
-For direct manual use (from inside `linters/go/`):
+For direct manual use (from the repo root):
 
 ```
 go run ./linters/go <subcommand> --service-map docs/SERVICE_MAP.yaml --code .

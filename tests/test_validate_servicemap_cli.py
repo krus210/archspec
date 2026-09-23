@@ -47,7 +47,7 @@ def test_todo_in_default_mode_warns_and_exits_zero(tmp_path):
     target.write_text(yaml.safe_dump(doc), encoding="utf-8")
     r = _run([str(target)])
     assert r.returncode == 0
-    assert "WARN DET-006" in r.stderr
+    assert "WARN DET-016" in r.stderr
     assert "api.endpoints[0].contract" in r.stderr
 
 
@@ -69,4 +69,4 @@ def test_todo_in_strict_mode_blocks(tmp_path):
     target.write_text(yaml.safe_dump(doc), encoding="utf-8")
     r = _run([str(target)])
     assert r.returncode == 1
-    assert "BLOCK DET-006" in r.stderr
+    assert "BLOCK DET-016" in r.stderr

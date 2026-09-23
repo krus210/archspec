@@ -74,7 +74,7 @@ Every property in the schema, top to bottom. `R` = required, `O` = optional.
 | `dependencies.downstream.sync[].timeout` | string | R | Duration (e.g. `300ms`). |
 | `dependencies.downstream.sync[].retries` | integer (min 0) | R | Retry budget. |
 | `dependencies.downstream.sync[].fallback` | string | R | What replaces the call on failure. |
-| `dependencies.downstream.sync[].on_failure` | string | R | Policy: `degrade`, `fail`, etc. |
+| `dependencies.downstream.sync[].on_failure` | string | R | Policy, free-form string (e.g. `degrade`, `fail`). |
 | `dependencies.downstream.async` | array of object | R | Asynchronous calls. |
 | `dependencies.downstream.async[].topic` | string | R | Broker topic name. |
 | `dependencies.downstream.async[].contract` | string | R | Path to schema doc. |

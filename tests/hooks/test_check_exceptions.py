@@ -58,3 +58,18 @@ def test_temporary_exception_without_expires_warns(stage_file, fixture_yaml_text
     stage_file("docs/SERVICE_MAP.yaml", _yaml_with_exc(fixture_yaml_text, bad))
     findings = check_exc(["docs/SERVICE_MAP.yaml"], cwd=git_repo)
     assert any(f.rule == "DET-014" and f.severity == "WARN" for f in findings)
+
+
+def test_expired_exception_with_unquoted_date_warns(stage_file, fixture_yaml_text, git_repo):
+    import datetime
+
+    (git_repo / "docs" / "adr").mkdir(parents=True)
+    (git_repo / "docs" / "adr" / "0001.md").write_text("# 0001\n")
+    # safe_dump writes a date object unquoted, so safe_load returns datetime.date.
+    expired = [{
+        "rule": "AI-001", "scope": {}, "reason": "x", "approved_by": "@a",
+        "adr": "docs/adr/0001.md", "expires": datetime.date(2020, 1, 1),
+    }]
+    stage_file("docs/SERVICE_MAP.yaml", _yaml_with_exc(fixture_yaml_text, expired))
+    findings = check_exc(["docs/SERVICE_MAP.yaml"], cwd=git_repo, today="2026-04-25")
+    assert any(f.rule == "DET-012" and f.severity == "WARN" for f in findings)

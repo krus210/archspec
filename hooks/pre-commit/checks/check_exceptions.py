@@ -57,7 +57,8 @@ def run(staged: list[str], cwd: Path | None = None, today: str | None = None) ->
                 ))
             # DET-012
             expires = exc.get("expires")
-            if expires and expires < today_iso:
+            # str(): unquoted YAML dates load as datetime.date.
+            if expires and str(expires) < today_iso:
                 findings.append(Finding(
                     "DET-012", "WARN",
                     f"{loc}: exception expired on {expires}", file=path,

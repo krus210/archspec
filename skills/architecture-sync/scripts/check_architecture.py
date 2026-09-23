@@ -3,11 +3,11 @@
 Walks every `SERVICE_MAP.yaml` reachable from `<repo-root>` and prints a
 markdown report listing graph mismatches, orphan events, TODO leaks and
 write_path/events inconsistencies. Read-only by default; ``--apply-upstream-fixes``
-mutates SERVICE_MAP.yaml files to add missing upstream entries discovered via
-reverse-scan.
+plans upstream entries discovered via reverse-scan (dry-run), and together with
+``--write`` rewrites SERVICE_MAP.yaml files.
 
 CLI: check_architecture.py <repo-root> [--issues-only] [--full]
-                           [--apply-upstream-fixes]
+                           [--apply-upstream-fixes [--write]]
 """
 
 from __future__ import annotations
@@ -125,9 +125,9 @@ def _service_issues(name: str, docs: dict[str, tuple[Path, dict]]) -> list[str]:
     issues: list[str] = []
     _, doc = docs[name]
 
-    # DET-006 — TODO leaks
+    # DET-016 — TODO leaks
     for jp in _todo_paths(doc):
-        issues.append(f"DET-006 TODO at {jp}")
+        issues.append(f"DET-016 TODO at {jp}")
 
     # DEP-001 — write_path/events consistency
     pattern = ((doc.get("consistency") or {}).get("write_path") or {}).get("pattern")
@@ -165,7 +165,7 @@ def _service_issues(name: str, docs: dict[str, tuple[Path, dict]]) -> list[str]:
         if storage_decl == _NOT_IMPLEMENTED:
             issues.append(
                 f"IDEMP-001 api.endpoints[{i}].idempotency: required=true but "
-                f"storage='not-implemented' (visible debt — wire a durable store)"
+                f"storage='{_NOT_IMPLEMENTED}' (visible debt — wire a durable store)"
             )
             continue
         m = _STORAGE_TECH_RE.match(storage_decl)
@@ -180,7 +180,7 @@ def _service_issues(name: str, docs: dict[str, tuple[Path, dict]]) -> list[str]:
     for i, ep in enumerate((doc.get("api") or {}).get("endpoints") or []):
         if ep.get("contract") == _NOT_DOCUMENTED:
             issues.append(
-                f"DOC-001 api.endpoints[{i}].contract='not-documented' — "
+                f"DOC-001 api.endpoints[{i}].contract='{_NOT_DOCUMENTED}' — "
                 f"contract is undocumented debt"
             )
     for i, e in enumerate((doc.get("events") or {}).get("published") or []):
@@ -198,7 +198,7 @@ def _service_issues(name: str, docs: dict[str, tuple[Path, dict]]) -> list[str]:
             for field in ("p99_latency", "availability"):
                 if sla.get(field) == _NOT_MEASURED:
                     issues.append(
-                        f"SLA-001 api.endpoints[{i}].sla.{field}='not-measured' "
+                        f"SLA-001 api.endpoints[{i}].sla.{field}='{_NOT_MEASURED}' "
                         f"under archspec_strict — wire metrics/SLO before declaring"
                     )
 
@@ -398,6 +398,8 @@ def main(argv: list[str]) -> int:
         help="Commit changes for --apply-upstream-fixes (otherwise dry-run).",
     )
     args = parser.parse_args(argv)
+    if args.write and not args.apply_upstream_fixes:
+        parser.error("--write requires --apply-upstream-fixes")
 
     if not args.repo_root.is_dir():
         print(f"error: not a directory: {args.repo_root}", file=sys.stderr)

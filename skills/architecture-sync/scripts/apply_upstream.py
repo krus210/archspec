@@ -224,7 +224,7 @@ def main(argv: list[str]) -> int:
         scan = json.loads(args.reverse_scan_json.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         print(f"error: invalid JSON in {args.reverse_scan_json}: {e}", file=sys.stderr)
-        return 2
+        return 1
 
     consumers = _filter_consumers(scan.get("consumers") or [], args.protocol_filter)
     existing = _load_existing_upstream(args.yaml_path)

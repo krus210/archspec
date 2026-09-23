@@ -12,7 +12,7 @@ on every machine regardless of system `python` / `pip`:
 make bootstrap     # python3 -m venv .venv + pip install -r requirements-dev.txt
 ```
 
-Requires `python3 >= 3.11` and `go >= 1.23` on PATH.
+Requires `python3 >= 3.11` and `go >= 1.26` on PATH.
 
 ## Before opening a PR
 
