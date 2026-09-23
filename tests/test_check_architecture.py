@@ -135,7 +135,7 @@ def test_dep004_upstream_not_reflected(tmp_path):
     assert "geo" in r.stdout and "gw" in r.stdout
 
 
-def test_det006_todo_in_endpoint(tmp_path):
+def test_det016_todo_in_endpoint(tmp_path):
     a = _base("a")
     a["api"]["endpoints"] = [
         {

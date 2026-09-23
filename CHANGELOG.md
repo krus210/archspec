@@ -16,8 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Go linter: `-h` exits 0; `usage()` lists subcommands in stable order.
 
 ### Changed
-- The TODO-literal check is now `DET-016`. `DET-006` stays reserved for
-  idempotency downgrades, as the catalog documents.
+- **Breaking:** the TODO-literal check is now `DET-016`. `DET-006` stays
+  reserved for idempotency downgrades, as the catalog documents. Entries in
+  `exceptions[]` with `rule: DET-006` that were meant for TODO literals must
+  be renamed to `rule: DET-016`. Older entries below (0.5.0, 0.6.0) that call
+  the TODO check `DET-006` describe the id as it was at that time.
 - Docs: aligned with the code (architecture-audit ids in the catalog, planned
   AI rules marked, schema path, Go version, `on_failure` vocabulary, per-linter
   output files in `/archspec:validate`); `pyproject.toml` version synced to 0.12.1.

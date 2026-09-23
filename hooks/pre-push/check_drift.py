@@ -27,7 +27,7 @@ class Finding:
     suggested_fix: str = ""
 
 
-_YAML_RELATIVE = "docs/SERVICE_MAP.yaml"
+_SERVICE_MAP_RELATIVE = "docs/SERVICE_MAP.yaml"
 _GENERATED_OUTPUTS = (
     Path("docs/diagrams/context.mmd"),
     Path("docs/diagrams/container.mmd"),
@@ -70,7 +70,7 @@ def _regenerate(yaml_path: Path, output_dir: Path) -> dict[str, Path]:
 def check_drift(*, repo_root: Path) -> list[Finding]:
     _ensure_sync_on_path(repo_root)
 
-    yaml_head = _head_blob(repo_root, _YAML_RELATIVE)
+    yaml_head = _head_blob(repo_root, _SERVICE_MAP_RELATIVE)
     if yaml_head is None:
         return []
 
@@ -90,7 +90,7 @@ def check_drift(*, repo_root: Path) -> list[Finding]:
                 findings.append(Finding(
                     rule="DET-004", severity="BLOCK",
                     file=str(relative), line=0,
-                    contract_ref=_YAML_RELATIVE,
+                    contract_ref=_SERVICE_MAP_RELATIVE,
                     message=f"missing generated file {relative}; run /archspec:sync",
                     suggested_fix="run `/archspec:sync` and commit the result",
                 ))
@@ -101,7 +101,7 @@ def check_drift(*, repo_root: Path) -> list[Finding]:
                 findings.append(Finding(
                     rule=rule, severity="BLOCK",
                     file=str(relative), line=0,
-                    contract_ref=_YAML_RELATIVE,
+                    contract_ref=_SERVICE_MAP_RELATIVE,
                     message=f"{relative} drifted from generator output",
                     suggested_fix="run `/archspec:sync` and commit the result",
                 ))

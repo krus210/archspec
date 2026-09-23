@@ -275,9 +275,10 @@ context lives.
 
 Implemented in `hooks/pre-commit/checks/check_todos.py` (also reported by
 `validate_servicemap.py` and `check_architecture.py`). Flags a literal
-`TODO` left in fields that must eventually hold a concrete value: endpoint
-and event `contract`, `sla.p99_latency`, `sla.availability`, sync
-dependency `timeout`, and scenario `name`. Severity is `WARN` on a draft
+`TODO` left in fields that must eventually hold a concrete value:
+`api.endpoints[].contract`, `api.endpoints[].sla.{p99_latency,availability}`,
+`dependencies.downstream.sync[].timeout`, `dependencies.storage[].name`, and
+`events.{published,consumed}[].contract`. Severity is `WARN` on a draft
 and `BLOCK` when `metadata.archspec_strict: true`.
 
 Fix: replace the `TODO` with a real value, or with an explicit gap marker
