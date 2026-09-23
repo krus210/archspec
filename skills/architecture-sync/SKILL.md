@@ -35,7 +35,7 @@ monorepo root.
 
 ### Existing service map (`/archspec:sync`)
 
-- Validates `docs/SERVICE_MAP.yaml` against `.servicemap/schema.json`.
+- Validates `docs/SERVICE_MAP.yaml` against the bundled `schema/servicemap.schema.json` (the `.servicemap/schema.json` copy is for IDEs and reference).
 - Rewrites `docs/diagrams/context.mmd`, `docs/diagrams/container.mmd`, and `docs/diagrams/sequence.mmd`.
 - Rewrites only the managed region of `docs/ARCHITECTURE.md`.
 - Stages `docs/diagrams/` and `docs/ARCHITECTURE.md`.
@@ -362,7 +362,7 @@ Run when the repo has no `docs/SERVICE_MAP.yaml`.
    bash "$SKILL_DIR/scripts/_py.sh" "$SKILL_DIR/scripts/validate_servicemap.py" docs/SERVICE_MAP.yaml
    ```
 
-   Exit 0 = continue. Exit 0 with `WARN DET-006` lines on stderr = TODO placeholders survive in optional fields; that's fine for a draft. Exit 1 = schema error or strict-mode TODO violation — surface the diagnostic and ask the user to amend.
+   Exit 0 = continue. Exit 0 with `WARN DET-016` lines on stderr = TODO placeholders survive in optional fields; that's fine for a draft. Exit 1 = schema error or strict-mode TODO violation — surface the diagnostic and ask the user to amend.
 
 3d. **Cross-service invariants prompt (skippable).** Only when the service has confirmed `events.published`, `events.consumed`, or `consistency.write_path.pattern` in `{outbox, saga}`. Ask the user one question (use your host's structured multiple-choice tool if it has one — Claude Code `AskUserQuestion`, opencode `question` — otherwise present the options as a numbered list and **stop until the user replies**):
 
@@ -420,7 +420,7 @@ archspec records **what is**, not **what is wished for**. When a field cannot be
 
 | Marker | Meaning | When to use | Diagnostics |
 | --- | --- | --- | --- |
-| `TODO` | I plan to fill this in soon | Stub on a fresh draft, expected to disappear within a week | DET-006 |
+| `TODO` | I plan to fill this in soon | Stub on a fresh draft, expected to disappear within a week | DET-016 |
 | `not-implemented` | The feature is not in the code at all | `idempotency.storage` when no durable store is wired; published-event `contract` when no schema exists | IDEMP-001, DOC-002 |
 | `not-documented` | Implementation exists but the schema/contract is not written | `api.endpoints[].contract` when no proto/openapi found | DOC-001 |
 | `not-measured` | Metric not collected | `sla.p99_latency`, `sla.availability` without SLO/observability data | SLA-001 (under `metadata.archspec_strict: true`) |
@@ -449,7 +449,7 @@ Read-only audit of an entire monorepo. Walks every `**/SERVICE_MAP.yaml` reachab
    - `--apply-upstream-fixes` — for every DEP-002 finding, run `reverse_scan` against the callee, merge the discovered consumers into the callee's `dependencies.upstream[]`, and **report planned edits as a dry-run** (does NOT touch files). Re-run with `--write` to actually rewrite YAML. Use this two-step flow after a monorepo-wide bootstrap to clear all DEP-002 in one pass: read the dry-run summary, ask the user (use your host's structured multiple-choice tool if it has one — Claude Code `AskUserQuestion`, opencode `question` — otherwise present the options as a numbered list) and **do not proceed until the user answers**, then run with `--write`.
 
 3. Surface the markdown report verbatim. The report flags:
-   - **DET-006** — `TODO` literals in required-concrete fields.
+   - **DET-016** — `TODO` literals in required-concrete fields.
    - **DEP-001** — write_path × events inconsistency (outbox without events, or direct with events).
    - **DEP-001b** — `outbox` declared but `dependencies.storage[]` is empty (outbox needs durable storage).
    - **DEP-002** — service A calls B but B does not list A as upstream.

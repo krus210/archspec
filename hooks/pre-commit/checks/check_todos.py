@@ -1,4 +1,4 @@
-"""DET-006: literal "TODO" left in fields that are required to be concrete.
+"""DET-016: literal "TODO" left in fields that are required to be concrete.
 
 WARN by default — coexists with in-progress specs. Becomes BLOCK only if the
 SERVICE_MAP.yaml opts in via ``metadata.archspec_strict: true``.
@@ -65,7 +65,7 @@ def run(staged: list[str], cwd: Path | None = None) -> list[Finding]:
         for jsonpath in _todo_jsonpaths(doc):
             findings.append(
                 Finding(
-                    "DET-006",
+                    "DET-016",
                     severity,
                     f"TODO at {jsonpath} — replace before deploy",
                     file=path,

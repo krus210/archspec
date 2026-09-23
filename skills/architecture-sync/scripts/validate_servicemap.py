@@ -2,7 +2,7 @@
 
 Exit codes:
   0 — valid (warnings may be printed to stderr)
-  1 — invalid (schema or YAML parse error, or DET-006 in strict mode)
+  1 — invalid (schema or YAML parse error, or DET-016 in strict mode)
   2 — usage error (missing/unreadable file)
 """
 
@@ -66,6 +66,9 @@ def validate(yaml_path: Path) -> int:
         return 2
     try:
         doc = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"error: cannot read {yaml_path}: {e}", file=sys.stderr)
+        return 2
     except yaml.YAMLError as e:
         print(f"error: invalid YAML in {yaml_path}: {e}", file=sys.stderr)
         return 1
@@ -86,7 +89,7 @@ def validate(yaml_path: Path) -> int:
     severity = "BLOCK" if strict else "WARN"
     for jsonpath in todo_paths:
         print(
-            f"{severity} DET-006: TODO at {jsonpath} — replace before deploy",
+            f"{severity} DET-016: TODO at {jsonpath} — replace before deploy",
             file=sys.stderr,
         )
     return 1 if strict else 0

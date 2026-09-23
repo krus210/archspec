@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `check_exceptions` no longer crashes the pre-commit hook on an unquoted
+  `expires: YYYY-MM-DD` (YAML loads it as a date, not a string).
+- `validate_servicemap.py` exits 2 on an unreadable file, as documented;
+  `apply_upstream.py` exits 1 (not 2) on an invalid reverse-scan JSON.
+- `check_architecture.py --write` without `--apply-upstream-fixes` is now a usage error.
+- Go linter: `-h` exits 0; `usage()` lists subcommands in stable order.
+
+### Changed
+- The TODO-literal check is now `DET-016`. `DET-006` stays reserved for
+  idempotency downgrades, as the catalog documents.
+- Docs: aligned with the code (architecture-audit ids in the catalog, planned
+  AI rules marked, schema path, Go version, `on_failure` vocabulary, per-linter
+  output files in `/archspec:validate`); `pyproject.toml` version synced to 0.12.1.
+
 ## [0.12.1] - 2026-07-11
 
 Discoverability fix for skills-only installs (Codex, opencode, `npx skills`), where there

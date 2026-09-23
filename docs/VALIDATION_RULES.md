@@ -1,11 +1,12 @@
 # Validation rules
 
-Two layers, one catalog. Every rule has a stable id, a single owning
-implementation, and a fixed severity.
+Every rule has a stable id, a single owning implementation, and a fixed
+severity. Rules come in two layers below; the architecture audit adds a
+third family of report-only ids (see [Architecture audit](#architecture-audit-dep-idemp-doc-sla)).
 
 | Layer | IDs | Where it runs | Latency budget |
 | --- | --- | --- | --- |
-| Deterministic | `DET-001`..`DET-015` | `hooks/pre-commit/run_all_checks.py` and `hooks/pre-push/` | < 1s, zero false positives |
+| Deterministic | `DET-001`..`DET-016` | `hooks/pre-commit/run_all_checks.py` and `hooks/pre-push/` | < 1s, zero false positives |
 | AI / static | `AI-001`..`AI-010` | `/archspec:validate` via `linters/<lang>/` | seconds, contextual |
 
 Severity vocabulary:
@@ -55,8 +56,8 @@ critical: a refactor that splits a service in half and accidentally
 references the original name.
 
 Fix: remove the duplicate entry or correct the typo. Cross-service cycle
-detection across multiple `SERVICE_MAP.yaml` files lives in the pre-push
-hook (`hooks/pre-push/check_drift.py`), not here. To suppress (e.g. an
+detection across multiple `SERVICE_MAP.yaml` files is not implemented yet;
+this rule only inspects the staged file. To suppress (e.g. an
 intentional self-call through a public API), add an `exceptions[]` entry
 with `rule: DET-002`, an ADR, and an approver — though in practice you
 should rename the entry instead.
@@ -270,6 +271,19 @@ cannot articulate the reason in a single line, the suppression should
 move to `SERVICE_MAP.yaml exceptions[]` where the full ADR + approver
 context lives.
 
+### DET-016 · TODO literal in a required-concrete field · WARN / BLOCK
+
+Implemented in `hooks/pre-commit/checks/check_todos.py` (also reported by
+`validate_servicemap.py` and `check_architecture.py`). Flags a literal
+`TODO` left in fields that must eventually hold a concrete value: endpoint
+and event `contract`, `sla.p99_latency`, `sla.availability`, sync
+dependency `timeout`, and scenario `name`. Severity is `WARN` on a draft
+and `BLOCK` when `metadata.archspec_strict: true`.
+
+Fix: replace the `TODO` with a real value, or with an explicit gap marker
+(`not-documented`, `not-implemented`, `not-measured`) when the value does
+not exist yet.
+
 ---
 
 ## AI layer (`AI-*`)
@@ -396,7 +410,7 @@ Common failures: a fire-and-forget call that should propagate or degrade; a
 refactor that dropped the `if err != nil` after a downstream call.
 
 Fix: capture the error and handle it per the declared `on_failure`
-(`propagate`, `fail-open`, `fail-closed`, `degrade-gracefully`). Suppress a
+(free-form string, e.g. `degrade`, `fail`). Suppress a
 genuinely fire-and-forget call with an inline `// archspec:ignore AI-007 --
 <reason>` pragma, or an `exceptions[]` entry for a durable case.
 
@@ -456,6 +470,16 @@ review. When the linter ships it will run during `/archspec:validate`.
 
 When implementing, keep the matcher conservative — false positives on
 this rule erode trust quickly.
+
+---
+
+## Architecture audit (`DEP-*`, `IDEMP-*`, `DOC-*`, `SLA-*`)
+
+Report-only ids emitted by `skills/architecture-sync/scripts/check_architecture.py`
+(`/archspec:check-architecture`) and, for `DEP-001`, by
+`hooks/pre-commit/checks/check_graph_consistency.py`. The full list with
+descriptions lives in the `architecture-sync` skill
+(`skills/architecture-sync/SKILL.md`, step "Surface the markdown report").
 
 ---
 

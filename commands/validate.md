@@ -67,8 +67,9 @@ bash "$SKILL_DIR/scripts/_py.sh" "$SKILL_DIR/scripts/<name>.py" <args...>
        continue
      fi
      for sub in $("$LINTER" --list); do
-       "$LINTER" "$sub" --service-map "$MAP" --code "$SVC_DIR"
-     done > "/tmp/archspec-findings-$(basename "$SVC_DIR").json"
+       "$LINTER" "$sub" --service-map "$MAP" --code "$SVC_DIR" \
+         > "/tmp/archspec-findings-$(basename "$SVC_DIR")-$sub.json"
+     done
    done
    ```
 
@@ -76,7 +77,7 @@ bash "$SKILL_DIR/scripts/_py.sh" "$SKILL_DIR/scripts/<name>.py" <args...>
 
    - `lint.sh --list` — print supported subcommand names, one per line, exit 0.
    - `lint.sh <subcommand> --service-map PATH --code DIR` — run that linter and
-     emit findings as a JSON array on stdout (spec §4.5 shape).
+     emit findings as a JSON array on stdout (see `linters/go/finding.go`).
 
    Each finding has shape `{rule, severity, file, line, contract_ref, message, suggested_fix}`.
 
@@ -85,7 +86,7 @@ bash "$SKILL_DIR/scripts/_py.sh" "$SKILL_DIR/scripts/<name>.py" <args...>
    `archspec:ignore` pragmas in the cited file/line. Keep suppressed findings in a
    `Suppressed` section of the report.
 
-5. **Format the report** following spec §6.3 — in monorepo mode grouped **per service**,
+5. **Format the report** following the template below — in monorepo mode grouped **per service**,
    with one combined summary line at the end:
 
    ```markdown

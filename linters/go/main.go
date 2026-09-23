@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 )
 
 type runner func(*ServiceMap, string) ([]Finding, error)
@@ -33,6 +35,9 @@ func main() {
 	smPath := fs.String("service-map", "docs/SERVICE_MAP.yaml", "path to SERVICE_MAP.yaml")
 	codeRoot := fs.String("code", ".", "path to source root to scan")
 	if err := fs.Parse(os.Args[2:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(0)
+		}
 		os.Exit(2)
 	}
 	sm, err := LoadServiceMap(*smPath)
@@ -54,7 +59,12 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: archspec-go-linter <subcommand> [--service-map PATH] [--code DIR]")
 	fmt.Fprintln(os.Stderr, "subcommands:")
+	names := make([]string, 0, len(subcommands))
 	for name := range subcommands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		fmt.Fprintln(os.Stderr, "  "+name)
 	}
 }

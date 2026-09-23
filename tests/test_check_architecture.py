@@ -149,7 +149,7 @@ def test_det006_todo_in_endpoint(tmp_path):
     _write(tmp_path, "a", a)
     _write(tmp_path, "b", _base("b"))
     r = _run(tmp_path)
-    assert "DET-006" in r.stdout
+    assert "DET-016" in r.stdout
     assert "api.endpoints[0].contract" in r.stdout
 
 

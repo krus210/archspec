@@ -35,7 +35,7 @@ def test_todo_in_endpoint_contract_warns(stage_file, fixture_yaml_text, git_repo
     stage_file("docs/SERVICE_MAP.yaml", _yaml_with(fixture_yaml_text, mutate))
     findings = check_todos(["docs/SERVICE_MAP.yaml"], cwd=git_repo)
     assert len(findings) == 1
-    assert findings[0].rule == "DET-006"
+    assert findings[0].rule == "DET-016"
     assert findings[0].severity == "WARN"
     assert "api.endpoints[0].contract" in findings[0].message
 

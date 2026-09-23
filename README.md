@@ -113,7 +113,7 @@ end, and those artifacts stay in the repo.
 
 | Flow | Output |
 |---|---|
-| `/archspec:init` / `architecture-sync` bootstrap | `docs/SERVICE_MAP.yaml`, `docs/diagrams/{context,container,sequence}.mmd`, generated `docs/ARCHITECTURE.md`, `.servicemap/schema.json`, `docs/adr/`, installed git hooks, and the archspec block in `CLAUDE.md` |
+| `/archspec:init` / `architecture-sync` bootstrap | `docs/SERVICE_MAP.yaml`, `docs/diagrams/{context,container,sequence}.mmd`, generated `docs/ARCHITECTURE.md`, `.servicemap/schema.json`, `docs/adr/`, installed git hooks, and the archspec block in `AGENTS.md` and `CLAUDE.md` |
 | `/archspec:sync` / `architecture-sync` | Regenerated Mermaid diagrams and the managed region of `docs/ARCHITECTURE.md` |
 | `/archspec:investigate` / `architecture-investigate` | Read-only contract summary, clarification questions, an optional cross-check against a reference/golden spec, a chat-only sequence diagram for the proposed change, a YAML diff to apply before coding — including an `edge_cases[]` risk register that turns every finding into a DET-003-enforced test path — plus a persisted `docs/plans/*.archplan.md` artifact reviewed by an independent plan-review gate, and a definition-of-done + validation loop to run after implementation |
 | `/archspec:implement` / `architecture-implement` | Contract edits applied + re-synced docs, a coding plan with an archplan↔task conformance table, the implemented change, five conformance passes (wiring, event emission, end-to-end field threading, dedup atomicity, requirement evidence), green `/archspec:validate` + `/archspec:check-architecture`, and an independent diff review |
@@ -219,12 +219,13 @@ Skills are portable across Claude Code, Codex, and opencode — see the install 
 - DET-004 diagram drift · DET-005 hand-edited diagrams · DET-006 idempotency breaks
 - DET-007 removed edge_cases / scenarios · DET-008 missing changelog
 - DET-009 consistency model change · DET-010..015 exception discipline
+- DET-016 TODO literals in required-concrete fields
 
 **AI (AI-*)** — `/archspec:validate`, contextual:
 
 - AI-001 idempotency · AI-002 outbox bypass · AI-003 optimistic locking
-- AI-004 façade-only violation · AI-005..006 coverage · AI-007 swallowed errors
-- AI-008 redundant calls · AI-009 undeclared events · AI-010 undeclared endpoint
+- AI-004 façade-only violation *(planned)* · AI-005..006 coverage *(planned)* · AI-007 swallowed errors
+- AI-008 redundant calls · AI-009 undeclared events · AI-010 undeclared endpoint *(planned)*
 
 </details>
 
