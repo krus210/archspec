@@ -267,6 +267,10 @@ requiring `ANTHROPIC_API_KEY` is deferred to a later milestone.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). Linters for new languages are very welcome.
 
+## Ecosystem & Related Tools
+
+- [MySpec](https://myspec.dev?utm_source=github&utm_medium=referral&utm_campaign=krus210-archspec): Collaborative web-based architecture contracts and PRD authoring for engineering teams.
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
